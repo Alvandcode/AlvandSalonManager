@@ -1,5 +1,4 @@
-
-name: Android APK
+name: Android APK and Release
 
 on:
   push:
@@ -7,12 +6,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -36,12 +34,35 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_version=${VERSION}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
       - name: Build debug APK
         run: gradle assembleDebug
 
-      - name: Upload APK
+      - name: Prepare versioned APK
+        shell: bash
+        run: |
+          mkdir -p release-files
+          cp app/build/outputs/apk/debug/app-debug.apk "release-files/AlvandSalonManager-v${{ steps.version.outputs.release_version }}-Android.apk"
+          cp README.md "release-files/AlvandSalonManager-v${{ steps.version.outputs.release_version }}-README.md"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AlvandSalonManager-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: AlvandSalonManager-v${{ steps.version.outputs.release_version }}
+          path: release-files/*
           if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.release_version }}
+          name: Alvand Salon Manager v${{ steps.version.outputs.release_version }}
+          generate_release_notes: true
+          files: release-files/*
