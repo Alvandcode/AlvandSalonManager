@@ -4,8 +4,13 @@ import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,8 +37,8 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 import kotlin.math.floor
 
-private val PersianBlue = Color(0xFF5B5FEF)
-private val Mint = Color(0xFF22B8A7)
+private val PersianBlue = Color(0xFFE6AD45)
+private val Mint = Color(0xFF55B987)
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SalonStore
@@ -46,12 +51,29 @@ class MainActivity : ComponentActivity() {
 
 data class Record(val id: Long, val kind: String, val title: String, val amount: Long,
                   val date: String, val customer: String = "", val phone: String = "")
+data class SalonService(val id: Long, val name: String, val price: Long, val description: String)
 
-class SalonStore(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "alvand_salon.db", null, 1) {
+class SalonStore(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "alvand_salon.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE records(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, amount INTEGER NOT NULL, date TEXT NOT NULL, customer TEXT DEFAULT '', phone TEXT DEFAULT '')")
+        db.execSQL("CREATE TABLE services(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')")
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) db.execSQL("CREATE TABLE IF NOT EXISTS services(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')")
+    }
+    fun services(): List<SalonService> {
+        val out = mutableListOf<SalonService>()
+        readableDatabase.rawQuery("SELECT id,name,price,description FROM services ORDER BY name COLLATE NOCASE", null).use { c ->
+            while (c.moveToNext()) out.add(SalonService(c.getLong(0), c.getString(1), c.getLong(2), c.getString(3)))
+        }
+        return out
+    }
+    fun saveService(id: Long?, name: String, price: Long, description: String) {
+        val values = ContentValues().apply { put("name", name); put("price", price); put("description", description) }
+        if (id == null) writableDatabase.insert("services", null, values)
+        else writableDatabase.update("services", values, "id=?", arrayOf(id.toString()))
+    }
+    fun deleteService(id: Long) { writableDatabase.delete("services", "id=?", arrayOf(id.toString())) }
     fun add(kind: String, title: String, amount: Long, date: String, customer: String = "", phone: String = "") {
         val v = ContentValues().apply {
             put("kind", kind); put("title", title); put("amount", amount); put("date", date)
@@ -140,23 +162,26 @@ fun SalonApp(store: SalonStore) {
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var addKind by remember { mutableStateOf("service") }
+    var showServiceEditor by remember { mutableStateOf(false) }
+    var editingService by remember { mutableStateOf<SalonService?>(null) }
     val records = remember(refresh) { store.all() }
-    val scheme = if (dark) darkColorScheme(primary=Color(0xFF9B9DFF), secondary=Mint, background=Color(0xFF10121A), surface=Color(0xFF1A1D29))
-                 else lightColorScheme(primary=PersianBlue, secondary=Mint, background=Color(0xFFF5F6FC), surface=Color.White)
+    val scheme = if (dark) darkColorScheme(primary=Color(0xFFFFC45B), secondary=Mint, background=Color(0xFF080B0E), surface=Color(0xFF14191E), onSurface=Color(0xFFF4F0E8), onSurfaceVariant=Color(0xFFB4B4B4))
+                 else lightColorScheme(primary=PersianBlue, secondary=Mint, background=Color(0xFF101216), surface=Color(0xFF191C21), onBackground=Color(0xFFF4F0E8), onSurface=Color(0xFFF4F0E8), onSurfaceVariant=Color(0xFFB4B4B4))
     MaterialTheme(colorScheme=scheme) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 NavigationBar(containerColor=MaterialTheme.colorScheme.surface) {
                     listOf("خانه" to Icons.Default.Dashboard, "خدمات" to Icons.Default.ContentCut,
-                        "هزینه‌ها" to Icons.Default.ReceiptLong, "مشتریان" to Icons.Default.People).forEach { (label, icon) ->
+                        "هزینه‌ها" to Icons.Default.ReceiptLong, "مشتریان" to Icons.Default.People,
+                        "درباره" to Icons.Default.Info).forEach { (label, icon) ->
                         NavigationBarItem(selected=tab==label, onClick={tab=label}, icon={Icon(icon, null)}, label={Text(label)})
                     }
                 }
             },
             floatingActionButton = {
-                if (tab != "خانه") FloatingActionButton(onClick={
-                    addKind = if(tab=="هزینه‌ها") "expense" else if(tab=="مشتریان") "customer" else "service"
+                if (tab != "خانه" && tab != "درباره" && tab != "خدمات") FloatingActionButton(onClick={
+                    addKind = if(tab=="هزینه‌ها") "expense" else "customer"
                     showAdd=true
                 }, containerColor=PersianBlue, contentColor=Color.White) { Icon(Icons.Default.Add, "افزودن") }
             }
@@ -171,15 +196,20 @@ fun SalonApp(store: SalonStore) {
                 }
                 when(tab) {
                     "خانه" -> Dashboard(records, onAdd={ addKind="service"; showAdd=true }, onExpenses={addKind="expense";showAdd=true})
-                    "خدمات" -> RecordsList(records.filter{it.kind=="service"}, "خدمات ثبت‌شده", store, {refresh++})
+                    "خدمات" -> ServiceCatalog(store, refresh, {refresh++},
+                        onEdit={ editingService=it; showServiceEditor=true },
+                        onAdd={ editingService=null; showServiceEditor=true })
                     "هزینه‌ها" -> RecordsList(records.filter{it.kind=="expense"}, "هزینه‌های ثبت‌شده", store, {refresh++})
-                    else -> RecordsList(records.filter{it.kind=="customer"}, "مشتریان", store, {refresh++})
+                    "مشتریان" -> RecordsList(records.filter{it.kind=="customer"}, "مشتریان", store, {refresh++})
+                    else -> AboutScreen()
                 }
             }
         }
         if(showAdd) AddDialog(kind=addKind, onDismiss={showAdd=false}, onSave={title,amount,date,customer,phone->
             store.add(addKind,title,amount,date,customer,phone); refresh++; showAdd=false
         })
+        if(showServiceEditor) ServiceEditorDialog(service=editingService, onDismiss={showServiceEditor=false},
+            onSave={id,name,price,description -> store.saveService(id,name,price,description); refresh++; showServiceEditor=false })
     }
 }
 
@@ -395,10 +425,9 @@ fun ServiceEditorDialog(service: SalonService?, onDismiss: () -> Unit, onSave: (
 
 @Composable
 fun AboutScreen() {
+    val context = LocalContext.current
     Column(Modifier.fillMaxWidth().padding(top=18.dp), horizontalAlignment=Alignment.CenterHorizontally) {
-        Box(Modifier.size(88.dp).background(PersianBlue, CircleShape), contentAlignment=Alignment.Center) {
-            Icon(Icons.Default.ContentCut, null, tint=Color.White, modifier=Modifier.size(42.dp))
-        }
+        Image(painter=painterResource(id=R.drawable.alvand_salon_logo), contentDescription="لوگوی آرایشگاه الوند", modifier=Modifier.size(104.dp))
         Spacer(Modifier.height(14.dp))
         Text("مدیریت آرایشگاه الوند", fontSize=22.sp, fontWeight=FontWeight.Bold)
         Text("Alvand Salon Manager", color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -410,9 +439,12 @@ fun AboutScreen() {
                 Text("این برنامه با کمک ابزارهای هوش مصنوعی و تلاش سازنده پروژه الوند توسعه داده شده است.")
                 Spacer(Modifier.height(14.dp))
                 Text("گیت‌هاب سازنده", fontWeight=FontWeight.SemiBold, color=MaterialTheme.colorScheme.primary)
-                Text("https://github.com/Alvandcode/", color=MaterialTheme.colorScheme.primary)
+                Text("https://github.com/Alvandcode/", color=MaterialTheme.colorScheme.primary,
+                    modifier=Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Alvandcode/")))
+                    })
                 Spacer(Modifier.height(12.dp))
-                Text("نسخه برنامه: 1.1.0", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("نسخه برنامه: ${BuildConfig.VERSION_NAME}", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
