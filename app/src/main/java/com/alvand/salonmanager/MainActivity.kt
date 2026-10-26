@@ -341,9 +341,9 @@ fun AddDialog(kind:String, onDismiss:()->Unit, onSave:(String,Long,String,String
 
 
 @Composable
-fun ServiceCatalog(store: SalonStore, onChanged: () -> Unit, onEdit: (SalonService) -> Unit, onAdd: () -> Unit) {
+fun ServiceCatalog(store: SalonStore, refreshKey: Int, onChanged: () -> Unit, onEdit: (SalonService) -> Unit, onAdd: () -> Unit) {
     var listRefresh by remember { mutableIntStateOf(0) }
-    val services = remember(listRefresh, onChanged) { store.services() }
+    val services = remember(listRefresh, refreshKey) { store.services() }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(vertical=10.dp), verticalAlignment=Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
