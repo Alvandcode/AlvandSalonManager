@@ -338,3 +338,82 @@ fun AddDialog(kind:String, onDismiss:()->Unit, onSave:(String,Long,String,String
         dismissButton={ TextButton(onClick=onDismiss) { Text("انصراف") } }
     )
 }
+
+
+@Composable
+fun ServiceCatalog(store: SalonStore, onChanged: () -> Unit, onEdit: (SalonService) -> Unit, onAdd: () -> Unit) {
+    var listRefresh by remember { mutableIntStateOf(0) }
+    val services = remember(listRefresh) { store.services() }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(vertical=10.dp), verticalAlignment=Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("فهرست خدمات", fontSize=21.sp, fontWeight=FontWeight.Bold)
+                Text("نام و قیمت خدمات آرایشگاه", fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Button(onClick=onAdd, shape=RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("خدمت جدید") }
+        }
+        if (services.isEmpty()) EmptyState("هنوز خدمتی تعریف نشده است. برای افزودن خدمت، دکمه «خدمت جدید» را بزنید.")
+        else LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp), contentPadding=PaddingValues(bottom=20.dp)) {
+            items(services, key={it.id}) { service ->
+                Card(shape=RoundedCornerShape(18.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface), modifier=Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).background(Color(0xFFE6E8FF), CircleShape), contentAlignment=Alignment.Center) { Icon(Icons.Default.ContentCut, null, tint=PersianBlue) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(service.name, fontWeight=FontWeight.Bold)
+                            if (service.description.isNotBlank()) Text(service.description, fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(money(service.price), color=MaterialTheme.colorScheme.primary, fontWeight=FontWeight.Bold)
+                        }
+                        IconButton(onClick={onEdit(service)}) { Icon(Icons.Default.Edit, "ویرایش") }
+                        IconButton(onClick={store.deleteService(service.id); listRefresh++; onChanged()}) { Icon(Icons.Default.DeleteOutline, "حذف", tint=Color(0xFFD95757)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ServiceEditorDialog(service: SalonService?, onDismiss: () -> Unit, onSave: (Long?, String, Long, String) -> Unit) {
+    var name by remember(service?.id) { mutableStateOf(service?.name ?: "") }
+    var price by remember(service?.id) { mutableStateOf(service?.price?.toString() ?: "") }
+    var description by remember(service?.id) { mutableStateOf(service?.description ?: "") }
+    AlertDialog(
+        onDismissRequest=onDismiss,
+        title={Text(if (service == null) "افزودن خدمت جدید" else "ویرایش خدمت", fontWeight=FontWeight.Bold)},
+        text={
+            Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value=name, onValueChange={name=it}, label={Text("نام خدمت")}, singleLine=true)
+                OutlinedTextField(value=price, onValueChange={price=it.filter { ch -> ch.isDigit() }}, label={Text("قیمت (تومان)")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), singleLine=true)
+                OutlinedTextField(value=description, onValueChange={description=it}, label={Text("توضیحات (اختیاری)")}, minLines=2)
+            }
+        },
+        confirmButton={Button(onClick={onSave(service?.id, name.trim(), price.toLong(), description.trim())}, enabled=name.isNotBlank() && (price.toLongOrNull() ?: 0L) > 0L) { Text("ذخیره")}},
+        dismissButton={TextButton(onClick=onDismiss) { Text("انصراف")}}
+    )
+}
+
+@Composable
+fun AboutScreen() {
+    Column(Modifier.fillMaxWidth().padding(top=18.dp), horizontalAlignment=Alignment.CenterHorizontally) {
+        Box(Modifier.size(88.dp).background(PersianBlue, CircleShape), contentAlignment=Alignment.Center) {
+            Icon(Icons.Default.ContentCut, null, tint=Color.White, modifier=Modifier.size(42.dp))
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("مدیریت آرایشگاه الوند", fontSize=22.sp, fontWeight=FontWeight.Bold)
+        Text("Alvand Salon Manager", color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp))
+        Card(shape=RoundedCornerShape(20.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                Text("درباره سازنده", fontWeight=FontWeight.Bold, fontSize=18.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("این برنامه با کمک ابزارهای هوش مصنوعی و تلاش سازنده پروژه الوند توسعه داده شده است.")
+                Spacer(Modifier.height(14.dp))
+                Text("گیت‌هاب سازنده", fontWeight=FontWeight.SemiBold, color=MaterialTheme.colorScheme.primary)
+                Text("https://github.com/Alvandcode/", color=MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(12.dp))
+                Text("نسخه برنامه: 1.1.0", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
