@@ -1,109 +1,385 @@
 package com.alvand.salonmanager
 
+import android.app.Activity
 import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import android.os.Bundle
-import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.DecimalFormat
+import androidx.core.view.WindowCompat
+import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.temporal.WeekFields
 import java.util.Locale
-import kotlin.math.floor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-private val PersianBlue = Color(0xFFE6AD45)
+private const val TAB_HOME = "خانه"
+private const val TAB_SERVICES = "خدمات"
+private const val TAB_EXPENSES = "هزینه‌ها"
+private const val TAB_CUSTOMERS = "مشتریان"
+private const val TAB_ABOUT = "درباره"
+
+private val BrandGold = Color(0xFFE6AD45)
+private val OnBrandGold = Color(0xFF2B1D00)
 private val Mint = Color(0xFF55B987)
+private val LightPrimary = Color(0xFF7A5200)
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SalonStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        store = SalonStore(this)
+        enableEdgeToEdge()
+        store = SalonStore(applicationContext)
         setContent { SalonApp(store) }
     }
+
+    override fun onDestroy() {
+        if (::store.isInitialized) store.close()
+        super.onDestroy()
+    }
 }
 
-data class Record(val id: Long, val kind: String, val title: String, val amount: Long,
-                  val date: String, val customer: String = "", val phone: String = "")
-data class SalonService(val id: Long, val name: String, val price: Long, val description: String)
+/*───────────────────────── data models ─────────────────────────*/
 
-class SalonStore(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "alvand_salon.db", null, 2) {
+data class Record(
+    val id: Long,
+    val kind: String,
+    val title: String,
+    val amount: Long,
+    val date: String,
+    val customer: String = "",
+    val phone: String = "",
+    val serviceId: Long? = null
+)
+
+data class SalonService(
+    val id: Long,
+    val name: String,
+    val price: Long,
+    val description: String
+)
+
+private data class DeleteTarget(
+    val id: Long,
+    val kind: String,
+    val title: String
+)
+
+/*───────────────────────── SQLite store ─────────────────────────*/
+
+class SalonStore(context: Context) :
+    SQLiteOpenHelper(context.applicationContext, "alvand_salon.db", null, 3) {
+
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE records(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, amount INTEGER NOT NULL, date TEXT NOT NULL, customer TEXT DEFAULT '', phone TEXT DEFAULT '')")
-        db.execSQL("CREATE TABLE services(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS records(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "kind TEXT NOT NULL," +
+                "title TEXT NOT NULL," +
+                "amount INTEGER NOT NULL," +
+                "date TEXT NOT NULL," +
+                "customer TEXT NOT NULL DEFAULT ''," +
+                "phone TEXT NOT NULL DEFAULT ''," +
+                "service_id INTEGER)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS services(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "name TEXT NOT NULL," +
+                "price INTEGER NOT NULL," +
+                "description TEXT NOT NULL DEFAULT '')"
+        )
     }
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) db.execSQL("CREATE TABLE IF NOT EXISTS services(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')")
+        if (oldVersion < 2) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS services(" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "name TEXT NOT NULL," +
+                    "price INTEGER NOT NULL," +
+                    "description TEXT NOT NULL DEFAULT '')"
+            )
+        }
+        if (oldVersion < 3) {
+            if (!hasColumn(db, "records", "service_id")) {
+                db.execSQL("ALTER TABLE records ADD COLUMN service_id INTEGER")
+            }
+            if (!hasColumn(db, "records", "customer")) {
+                db.execSQL("ALTER TABLE records ADD COLUMN customer TEXT NOT NULL DEFAULT ''")
+            }
+            if (!hasColumn(db, "records", "phone")) {
+                db.execSQL("ALTER TABLE records ADD COLUMN phone TEXT NOT NULL DEFAULT ''")
+            }
+        }
     }
+
+    private fun hasColumn(db: SQLiteDatabase, table: String, column: String): Boolean {
+        db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            if (nameIndex < 0) return false
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIndex) == column) return true
+            }
+        }
+        return false
+    }
+
     fun services(): List<SalonService> {
-        val out = mutableListOf<SalonService>()
-        readableDatabase.rawQuery("SELECT id,name,price,description FROM services ORDER BY name COLLATE NOCASE", null).use { c ->
-            while (c.moveToNext()) out.add(SalonService(c.getLong(0), c.getString(1), c.getLong(2), c.getString(3)))
+        val result = mutableListOf<SalonService>()
+        readableDatabase.rawQuery(
+            "SELECT id,name,price,description FROM services ORDER BY name COLLATE NOCASE",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    SalonService(
+                        id = cursor.getLong(0),
+                        name = cursor.getString(1) ?: "",
+                        price = cursor.getLong(2),
+                        description = cursor.getString(3) ?: ""
+                    )
+                )
+            }
         }
-        return out
+        return result
     }
+
     fun saveService(id: Long?, name: String, price: Long, description: String) {
-        val values = ContentValues().apply { put("name", name); put("price", price); put("description", description) }
-        if (id == null) writableDatabase.insert("services", null, values)
-        else writableDatabase.update("services", values, "id=?", arrayOf(id.toString()))
-    }
-    fun deleteService(id: Long) { writableDatabase.delete("services", "id=?", arrayOf(id.toString())) }
-    fun add(kind: String, title: String, amount: Long, date: String, customer: String = "", phone: String = "") {
-        val v = ContentValues().apply {
-            put("kind", kind); put("title", title); put("amount", amount); put("date", date)
-            put("customer", customer); put("phone", phone)
+        val values = ContentValues().apply {
+            put("name", name)
+            put("price", price)
+            put("description", description)
         }
-        writableDatabase.insert("records", null, v)
+        if (id == null) {
+            writableDatabase.insertOrThrow("services", null, values)
+        } else {
+            writableDatabase.update("services", values, "id=?", arrayOf(id.toString()))
+        }
     }
+
+    fun deleteService(id: Long) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val values = ContentValues().apply { putNull("service_id") }
+            db.update("records", values, "service_id=?", arrayOf(id.toString()))
+            db.delete("services", "id=?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun add(
+        kind: String,
+        title: String,
+        amount: Long,
+        date: String,
+        customer: String = "",
+        phone: String = "",
+        serviceId: Long? = null
+    ) {
+        val values = ContentValues().apply {
+            put("kind", kind)
+            put("title", title)
+            put("amount", amount)
+            put("date", date)
+            put("customer", customer)
+            put("phone", phone)
+            if (serviceId == null) putNull("service_id") else put("service_id", serviceId)
+        }
+        writableDatabase.insertOrThrow("records", null, values)
+    }
+
+    fun updateRecord(
+        id: Long,
+        kind: String,
+        title: String,
+        amount: Long,
+        date: String,
+        customer: String,
+        phone: String,
+        serviceId: Long?
+    ) {
+        val values = ContentValues().apply {
+            put("kind", kind)
+            put("title", title)
+            put("amount", amount)
+            put("date", date)
+            put("customer", customer)
+            put("phone", phone)
+            if (serviceId == null) putNull("service_id") else put("service_id", serviceId)
+        }
+        writableDatabase.update("records", values, "id=?", arrayOf(id.toString()))
+    }
+
     fun all(): List<Record> {
-        val out = mutableListOf<Record>()
-        readableDatabase.rawQuery("SELECT id,kind,title,amount,date,customer,phone FROM records ORDER BY id DESC", null).use { c ->
-            while (c.moveToNext()) out.add(Record(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3), c.getString(4), c.getString(5), c.getString(6)))
+        val result = mutableListOf<Record>()
+        readableDatabase.rawQuery(
+            "SELECT id,kind,title,amount,date,customer,phone,service_id " +
+                "FROM records ORDER BY date DESC, id DESC",
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    Record(
+                        id = cursor.getLong(0),
+                        kind = cursor.getString(1) ?: "service",
+                        title = cursor.getString(2) ?: "",
+                        amount = cursor.getLong(3),
+                        date = normalizeDate(cursor.getString(4) ?: ""),
+                        customer = cursor.getString(5) ?: "",
+                        phone = cursor.getString(6) ?: "",
+                        serviceId = if (cursor.isNull(7)) null else cursor.getLong(7)
+                    )
+                )
+            }
         }
-        return out
+        return result
     }
-    fun delete(id: Long) { writableDatabase.delete("records", "id=?", arrayOf(id.toString())) }
+
+    fun delete(id: Long) {
+        writableDatabase.delete("records", "id=?", arrayOf(id.toString()))
+    }
+
+    fun exportCsv(): String {
+        val out = StringBuilder()
+        out.append('\uFEFF')
+        out.append("kind,title,amount,date,customer,phone,service_id\r\n")
+        all().forEach { record ->
+            out.append(csv(record.kind)).append(',')
+                .append(csv(record.title)).append(',')
+                .append(record.amount).append(',')
+                .append(csv(record.date)).append(',')
+                .append(csv(record.customer)).append(',')
+                .append(csv(record.phone)).append(',')
+                .append(record.serviceId?.toString() ?: "")
+                .append("\r\n")
+        }
+        out.append("\r\nservice_name,price,description\r\n")
+        services().forEach { service ->
+            out.append(csv(service.name)).append(',')
+                .append(service.price).append(',')
+                .append(csv(service.description)).append("\r\n")
+        }
+        return out.toString()
+    }
+
+    private fun csv(value: String): String {
+        val escaped = value.replace("\"", "\"\"")
+        return if (escaped.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+            "\"$escaped\""
+        } else {
+            escaped
+        }
+    }
 }
 
-private fun money(n: Long): String = DecimalFormat("#,###").format(n) + " تومان"
-private fun persianDigits(s: String): String = s.map { if (it in '0'..'9') ('۰'.code + (it.code - '0'.code)).toChar() else it }.joinToString("")
+/*───────────────────────── date, number and text helpers ─────────────────────────*/
 
-/** Gregorian -> Jalali conversion; stores dates as sortable YYYY-MM-DD Jalali strings. */
+private fun String.toAsciiDigits(): String {
+    val source = this
+    return buildString(source.length) {
+        for (character in source) {
+            append(
+                when {
+                    character in '۰'..'۹' -> ('0'.code + (character.code - '۰'.code)).toChar()
+                    character in '٠'..'٩' -> ('0'.code + (character.code - '٠'.code)).toChar()
+                    else -> character
+                }
+            )
+        }
+    }
+}
+
+private fun persianDigits(value: String): String = buildString(value.length) {
+    for (character in value) {
+        append(
+            if (character in '0'..'9') {
+                ('۰'.code + (character.code - '0'.code)).toChar()
+            } else {
+                character
+            }
+        )
+    }
+}
+
+private fun normalizeDate(raw: String): String {
+    val ascii = raw.toAsciiDigits().trim().replace('/', '-').replace('.', '-')
+    val match = Regex("^(\\d{4})-(\\d{1,2})-(\\d{1,2})$").matchEntire(ascii) ?: return ascii
+    val year = match.groupValues[1].toIntOrNull() ?: return ascii
+    val month = match.groupValues[2].toIntOrNull() ?: return ascii
+    val day = match.groupValues[3].toIntOrNull() ?: return ascii
+    return "%04d-%02d-%02d".format(Locale.US, year, month, day)
+}
+
+private fun money(value: Long): String {
+    val negative = value < 0
+    val digits = value.toString().removePrefix("-")
+    val grouped = digits.reversed().chunked(3).joinToString("٬").reversed()
+    val prefix = if (negative) "-" else ""
+    return prefix + persianDigits(grouped) + " تومان"
+}
+
+private fun showJalali(date: String): String {
+    val normalized = normalizeDate(date)
+    val match = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").matchEntire(normalized) ?: return normalized
+    return "${persianDigits(match.groupValues[1])}-" +
+        "${persianDigits(match.groupValues[2])}-" +
+        persianDigits(match.groupValues[3])
+}
+
 private fun jalaliToday(): String {
-    val d = LocalDate.now()
-    val gDays = intArrayOf(0,31, if (d.isLeapYear) 29 else 28,31,30,31,30,31,31,30,31,30,31)
-    var gy = d.year - 1600
-    var gm = d.monthValue - 1
-    var gd = d.dayOfMonth - 1
+    val date = LocalDate.now()
+    return gregorianToJalali(date.year, date.monthValue, date.dayOfMonth)
+}
+
+private fun gregorianToJalali(year: Int, month: Int, day: Int): String {
+    val date = LocalDate.of(year, month, day)
+    val gy = date.year - 1600
     var gDayNo = 365 * gy + (gy + 3) / 4 - (gy + 99) / 100 + (gy + 399) / 400
-    for (i in 0 until gm) gDayNo += gDays[i + 1]
-    gDayNo += gd
+    gDayNo += date.dayOfYear - 1
     var jDayNo = gDayNo - 79
     val jNp = jDayNo / 12053
     jDayNo %= 12053
@@ -113,339 +389,1402 @@ private fun jalaliToday(): String {
         jy += (jDayNo - 1) / 365
         jDayNo = (jDayNo - 1) % 365
     }
-    val jm: Int
-    val jd: Int
-    if (jDayNo < 186) {
-        jm = 1 + (jDayNo / 31); jd = 1 + (jDayNo % 31)
-    } else {
-        jm = 7 + ((jDayNo - 186) / 30); jd = 1 + ((jDayNo - 186) % 30)
-    }
-    return "%04d-%02d-%02d".format(jy, jm, jd)
+    val jm = if (jDayNo < 186) 1 + jDayNo / 31 else 7 + (jDayNo - 186) / 30
+    val jd = if (jDayNo < 186) 1 + jDayNo % 31 else 1 + (jDayNo - 186) % 30
+    return "%04d-%02d-%02d".format(Locale.US, jy, jm, jd)
 }
 
-private fun jalaliMonth(date: String) = date.take(7)
-private fun jalaliYear(date: String) = date.take(4)
+private fun isValidJalaliDate(raw: String): Boolean {
+    val normalized = normalizeDate(raw)
+    val match = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").matchEntire(normalized) ?: return false
+    val year = match.groupValues[1].toIntOrNull() ?: return false
+    val month = match.groupValues[2].toIntOrNull() ?: return false
+    val day = match.groupValues[3].toIntOrNull() ?: return false
+    if (year !in 1200..1600 || month !in 1..12 || day < 1) return false
+    val maxDay = when {
+        month <= 6 -> 31
+        month <= 11 -> 30
+        isJalaliLeap(year) -> 30
+        else -> 29
+    }
+    return day <= maxDay
+}
+
+private fun isJalaliLeap(year: Int): Boolean {
+    return when (year % 33) {
+        1, 5, 9, 13, 17, 22, 26, 30 -> true
+        else -> false
+    }
+}
+
+private fun jalaliMonth(date: String): String = normalizeDate(date).take(7)
+
+private fun jalaliYear(date: String): String = normalizeDate(date).take(4)
+
 private fun periodStart(period: String): String {
     val today = jalaliToday()
     return when (period) {
-        "امروز" -> today
+        "هفته" -> {
+            val date = LocalDate.now()
+            val daysSinceSaturday = when (date.dayOfWeek) {
+                DayOfWeek.SATURDAY -> 0
+                DayOfWeek.SUNDAY -> 1
+                DayOfWeek.MONDAY -> 2
+                DayOfWeek.TUESDAY -> 3
+                DayOfWeek.WEDNESDAY -> 4
+                DayOfWeek.THURSDAY -> 5
+                DayOfWeek.FRIDAY -> 6
+            }
+            val start = date.minusDays(daysSinceSaturday.toLong())
+            gregorianToJalali(start.year, start.monthValue, start.dayOfMonth)
+        }
         "ماه" -> today.take(7) + "-01"
         "سال" -> today.take(4) + "-01-01"
-        else -> {
-            // Current Jalali week approximation based on Gregorian weekday.
-            val back = LocalDate.now().dayOfWeek.value - 1
-            val d = LocalDate.now().minusDays(back.toLong())
-            val converted = gregorianToJalali(d.year, d.monthValue, d.dayOfMonth)
-            converted
+        else -> today
+    }
+}
+
+private fun formatDateInput(raw: String): String {
+    val digits = raw.toAsciiDigits().filter { it in '0'..'9' }.take(8)
+    return buildString {
+        append(digits.take(4))
+        if (digits.length > 4) {
+            append('-')
+            append(digits.substring(4, minOf(6, digits.length)))
+        }
+        if (digits.length > 6) {
+            append('-')
+            append(digits.substring(6))
         }
     }
 }
-private fun gregorianToJalali(year: Int, month: Int, day: Int): String {
-    val d = LocalDate.of(year, month, day)
-    val gDays = intArrayOf(0,31,if(d.isLeapYear)29 else 28,31,30,31,30,31,31,30,31,30,31)
-    var gy=d.year-1600; val gm=d.monthValue-1; val gd=d.dayOfMonth-1
-    var g=365*gy+(gy+3)/4-(gy+99)/100+(gy+399)/400
-    for(i in 0 until gm) g+=gDays[i+1]
-    g+=gd
-    var j=g-79; val np=j/12053; j%=12053
-    var jy=979+33*np+4*(j/1461); j%=1461
-    if(j>=366){jy+=(j-1)/365;j=(j-1)%365}
-    val jm:Int; val jd:Int
-    if(j<186){jm=1+j/31;jd=1+j%31}else{jm=7+(j-186)/30;jd=1+(j-186)%30}
-    return "%04d-%02d-%02d".format(jy,jm,jd)
+
+private fun parseAmount(raw: String): Long? {
+    val digits = raw.toAsciiDigits().filter { it in '0'..'9' }
+    if (digits.isEmpty()) return null
+    return digits.toLongOrNull()
 }
+
+/*───────────────────────── app shell ─────────────────────────*/
 
 @Composable
 fun SalonApp(store: SalonStore) {
-    var dark by remember { mutableStateOf(false) }
-    var tab by remember { mutableStateOf("خانه") }
+    var dark by rememberSaveable { mutableStateOf(true) }
+    var tab by rememberSaveable { mutableStateOf(TAB_HOME) }
     var refresh by remember { mutableIntStateOf(0) }
+    var records by remember { mutableStateOf(store.all()) }
+    var services by remember { mutableStateOf(store.services()) }
     var showAdd by remember { mutableStateOf(false) }
     var addKind by remember { mutableStateOf("service") }
     var showServiceEditor by remember { mutableStateOf(false) }
     var editingService by remember { mutableStateOf<SalonService?>(null) }
-    val records = remember(refresh) { store.all() }
-    val scheme = if (dark) darkColorScheme(primary=Color(0xFFFFC45B), secondary=Mint, background=Color(0xFF080B0E), surface=Color(0xFF14191E), onSurface=Color(0xFFF4F0E8), onSurfaceVariant=Color(0xFFB4B4B4))
-                 else lightColorScheme(primary=PersianBlue, secondary=Mint, background=Color(0xFF101216), surface=Color(0xFF191C21), onBackground=Color(0xFFF4F0E8), onSurface=Color(0xFFF4F0E8), onSurfaceVariant=Color(0xFFB4B4B4))
-    MaterialTheme(colorScheme=scheme) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                NavigationBar(containerColor=MaterialTheme.colorScheme.surface) {
-                    listOf("خانه" to Icons.Default.Dashboard, "خدمات" to Icons.Default.ContentCut,
-                        "هزینه‌ها" to Icons.Default.ReceiptLong, "مشتریان" to Icons.Default.People,
-                        "درباره" to Icons.Default.Info).forEach { (label, icon) ->
-                        NavigationBarItem(selected=tab==label, onClick={tab=label}, icon={Icon(icon, null)}, label={Text(label)})
-                    }
-                }
-            },
-            floatingActionButton = {
-                if (tab != "خانه" && tab != "درباره" && tab != "خدمات") FloatingActionButton(onClick={
-                    addKind = if(tab=="هزینه‌ها") "expense" else "customer"
-                    showAdd=true
-                }, containerColor=PersianBlue, contentColor=Color.White) { Icon(Icons.Default.Add, "افزودن") }
-            }
-        ) { pad ->
-            Column(Modifier.fillMaxSize().padding(pad).padding(horizontal=18.dp)) {
-                Row(Modifier.fillMaxWidth().padding(top=16.dp, bottom=12.dp), verticalAlignment=Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("اَلْوَنْد", fontSize=27.sp, fontWeight=FontWeight.Black, color=MaterialTheme.colorScheme.primary)
-                        Text("مدیریت مالی آرایشگاه", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(onClick={dark=!dark}) { Icon(if(dark) Icons.Default.LightMode else Icons.Default.DarkMode, "تغییر تم") }
-                }
-                when(tab) {
-                    "خانه" -> Dashboard(records, onAdd={ addKind="service"; showAdd=true }, onExpenses={addKind="expense";showAdd=true})
-                    "خدمات" -> ServiceCatalog(store, refresh, {refresh++},
-                        onEdit={ editingService=it; showServiceEditor=true },
-                        onAdd={ editingService=null; showServiceEditor=true })
-                    "هزینه‌ها" -> RecordsList(records.filter{it.kind=="expense"}, "هزینه‌های ثبت‌شده", store, {refresh++})
-                    "مشتریان" -> RecordsList(records.filter{it.kind=="customer"}, "مشتریان", store, {refresh++})
-                    else -> AboutScreen()
-                }
+    var editingRecord by remember { mutableStateOf<Record?>(null) }
+    var deleteTarget by remember { mutableStateOf<DeleteTarget?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun mutate(block: () -> Unit) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { block() }
+            } catch (_: Exception) {
+                Toast.makeText(context, "ذخیره اطلاعات ناموفق بود", Toast.LENGTH_LONG).show()
+            } finally {
+                refresh++
             }
         }
-        if(showAdd) AddDialog(kind=addKind, onDismiss={showAdd=false}, onSave={title,amount,date,customer,phone->
-            store.add(addKind,title,amount,date,customer,phone); refresh++; showAdd=false
-        })
-        if(showServiceEditor) ServiceEditorDialog(service=editingService, onDismiss={showServiceEditor=false},
-            onSave={id,name,price,description -> store.saveService(id,name,price,description); refresh++; showServiceEditor=false })
+    }
+
+    LaunchedEffect(refresh) {
+        if (refresh > 0) {
+            records = withContext(Dispatchers.IO) { store.all() }
+            services = withContext(Dispatchers.IO) { store.services() }
+        }
+    }
+
+    val scheme = if (dark) {
+        darkColorScheme(
+            primary = BrandGold,
+            onPrimary = OnBrandGold,
+            primaryContainer = Color(0xFF5A4210),
+            onPrimaryContainer = Color(0xFFFFE8B8),
+            secondary = Color(0xFF7FD8AA),
+            onSecondary = Color(0xFF002114),
+            secondaryContainer = Color(0xFF1F4D38),
+            onSecondaryContainer = Color(0xFFA8F0CC),
+            background = Color(0xFF080B0E),
+            onBackground = Color(0xFFF4F0E8),
+            surface = Color(0xFF14191E),
+            onSurface = Color(0xFFF4F0E8),
+            surfaceVariant = Color(0xFF2A3440),
+            onSurfaceVariant = Color(0xFFB4B4B4),
+            surfaceContainer = Color(0xFF171D24),
+            surfaceContainerHigh = Color(0xFF1E2630),
+            surfaceContainerHighest = Color(0xFF2A3440),
+            outline = Color(0xFF8A939C)
+        )
+    } else {
+        lightColorScheme(
+            primary = LightPrimary,
+            onPrimary = Color.White,
+            primaryContainer = Color(0xFFFFE8B8),
+            onPrimaryContainer = Color(0xFF2B1D00),
+            secondary = Color(0xFF2E7D5B),
+            onSecondary = Color.White,
+            secondaryContainer = Color(0xFFFFE8B8),
+            onSecondaryContainer = Color(0xFF2B1D00),
+            background = Color(0xFFF5F6FC),
+            onBackground = Color(0xFF1A1A1A),
+            surface = Color.White,
+            onSurface = Color(0xFF1A1A1A),
+            surfaceVariant = Color(0xFFE3E3E8),
+            onSurfaceVariant = Color(0xFF555555),
+            surfaceContainer = Color(0xFFF0F1F5),
+            surfaceContainerHigh = Color(0xFFECECEC),
+            surfaceContainerHighest = Color(0xFFD9D9D9),
+            outline = Color(0xFF74777F)
+        )
+    }
+
+    val activity = context as? Activity
+    SideEffect {
+        if (activity != null) {
+            val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            controller.isAppearanceLightStatusBars = !dark
+            controller.isAppearanceLightNavigationBars = !dark
+        }
+    }
+
+    MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                bottomBar = {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                        listOf(
+                            Triple(TAB_HOME, "خانه", Icons.Default.Dashboard),
+                            Triple(TAB_SERVICES, "خدمات", Icons.Default.ContentCut),
+                            Triple(TAB_EXPENSES, "هزینه‌ها", Icons.Default.ReceiptLong),
+                            Triple(TAB_CUSTOMERS, "مشتریان", Icons.Default.People),
+                            Triple(TAB_ABOUT, "درباره", Icons.Default.Info)
+                        ).forEach { (tabName, label, icon) ->
+                            NavigationBarItem(
+                                selected = tab == tabName,
+                                onClick = { tab = tabName },
+                                icon = { Icon(icon, contentDescription = null) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                },
+                floatingActionButton = {
+                    if (tab == TAB_EXPENSES || tab == TAB_CUSTOMERS) {
+                        FloatingActionButton(
+                            onClick = {
+                                addKind = if (tab == TAB_EXPENSES) "expense" else "customer"
+                                showAdd = true
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "افزودن")
+                        }
+                    }
+                }
+            ) { padding ->
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 18.dp)
+                ) {
+                    Header(dark = dark, onToggleTheme = { dark = !dark })
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        when (tab) {
+                            TAB_HOME -> Dashboard(
+                                records = records,
+                                onAddService = {
+                                    addKind = "service"
+                                    showAdd = true
+                                },
+                                onAddExpense = {
+                                    addKind = "expense"
+                                    showAdd = true
+                                },
+                                onDelete = { record ->
+                                    deleteTarget = DeleteTarget(record.id, record.kind, record.title)
+                                },
+                                onEdit = { editingRecord = it }
+                            )
+                            TAB_SERVICES -> ServiceCatalog(
+                                services = services,
+                                records = records,
+                                onAdd = {
+                                    editingService = null
+                                    showServiceEditor = true
+                                },
+                                onEdit = {
+                                    editingService = it
+                                    showServiceEditor = true
+                                },
+                                onDelete = {
+                                    deleteTarget = DeleteTarget(it.id, "catalog", it.name)
+                                }
+                            )
+                            TAB_EXPENSES -> RecordsList(
+                                title = "هزینه‌های ثبت‌شده",
+                                records = records.filter { it.kind == "expense" },
+                                showTotal = true,
+                                onDelete = { record ->
+                                    deleteTarget = DeleteTarget(record.id, record.kind, record.title)
+                                },
+                                onEdit = { editingRecord = it }
+                            )
+                            TAB_CUSTOMERS -> RecordsList(
+                                title = "مشتریان",
+                                records = records.filter { it.kind == "customer" },
+                                showTotal = false,
+                                onDelete = { record ->
+                                    deleteTarget = DeleteTarget(record.id, record.kind, record.title)
+                                },
+                                onEdit = { editingRecord = it }
+                            )
+                            else -> AboutScreen(store)
+                        }
+                    }
+                }
+            }
+
+            if (showAdd) {
+                AddDialog(
+                    kind = addKind,
+                    services = services,
+                    onDismiss = { showAdd = false },
+                    onSave = { title, amount, date, customer, phone, serviceId ->
+                        mutate {
+                            store.add(addKind, title, amount, date, customer, phone, serviceId)
+                        }
+                        showAdd = false
+                    }
+                )
+            }
+
+            if (showServiceEditor) {
+                ServiceEditorDialog(
+                    service = editingService,
+                    onDismiss = {
+                        showServiceEditor = false
+                        editingService = null
+                    },
+                    onSave = { id, name, price, description ->
+                        mutate { store.saveService(id, name, price, description) }
+                        showServiceEditor = false
+                        editingService = null
+                    }
+                )
+            }
+
+            val recordBeingEdited = editingRecord
+            if (recordBeingEdited != null) {
+                RecordEditorDialog(
+                    record = recordBeingEdited,
+                    services = services,
+                    onDismiss = { editingRecord = null },
+                    onSave = { title, amount, date, customer, phone, serviceId ->
+                        mutate {
+                            store.updateRecord(
+                                recordBeingEdited.id,
+                                recordBeingEdited.kind,
+                                title,
+                                amount,
+                                date,
+                                customer,
+                                phone,
+                                serviceId
+                            )
+                        }
+                        editingRecord = null
+                    }
+                )
+            }
+
+            val target = deleteTarget
+            if (target != null) {
+                ConfirmDeleteDialog(
+                    target = target,
+                    onDismiss = { deleteTarget = null },
+                    onConfirm = {
+                        deleteTarget = null
+                        mutate {
+                            if (target.kind == "catalog") {
+                                store.deleteService(target.id)
+                            } else {
+                                store.delete(target.id)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+/*───────────────────────── shared UI ─────────────────────────*/
+
+@Composable
+private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "اَلْوَنْد",
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "مدیریت مالی آرایشگاه",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onToggleTheme) {
+            Icon(
+                if (dark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                contentDescription = "تغییر تم"
+            )
+        }
     }
 }
 
 @Composable
-fun Dashboard(records: List<Record>, onAdd:()->Unit, onExpenses:()->Unit) {
+private fun Dashboard(
+    records: List<Record>,
+    onAddService: () -> Unit,
+    onAddExpense: () -> Unit,
+    onDelete: (Record) -> Unit,
+    onEdit: (Record) -> Unit
+) {
     val today = jalaliToday()
-    val services = records.filter{it.kind=="service"}
-    val expenses = records.filter{it.kind=="expense"}
-    val daily = services.filter{it.date==today}.sumOf{it.amount}
-    val dailyCost = expenses.filter{it.date==today}.sumOf{it.amount}
-    val week = services.filter{it.date >= periodStart("هفته")}.sumOf{it.amount}
-    val month = services.filter{jalaliMonth(it.date)==jalaliMonth(today)}.sumOf{it.amount}
-    val year = services.filter{jalaliYear(it.date)==jalaliYear(today)}.sumOf{it.amount}
-    val allNet = services.sumOf{it.amount} - expenses.sumOf{it.amount}
-    LazyColumn(verticalArrangement=Arrangement.spacedBy(12.dp), contentPadding=PaddingValues(bottom=20.dp)) {
+    val income = records.filter { it.kind == "service" }
+    val expenses = records.filter { it.kind == "expense" }
+    val daily = income.filter { it.date == today }.sumOf { it.amount }
+    val dailyCost = expenses.filter { it.date == today }.sumOf { it.amount }
+    val weekStart = periodStart("هفته")
+    val week = income.filter { it.date >= weekStart && it.date <= today }.sumOf { it.amount }
+    val month = income
+        .filter { jalaliMonth(it.date) == jalaliMonth(today) && it.date <= today }
+        .sumOf { it.amount }
+    val year = income
+        .filter { jalaliYear(it.date) == jalaliYear(today) && it.date <= today }
+        .sumOf { it.amount }
+    val net = income.sumOf { it.amount } - expenses.sumOf { it.amount }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        item { HeroCard(net = net, today = today) }
+        item { Text("گزارش درآمد", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         item {
-            Card(shape=RoundedCornerShape(26.dp), colors=CardDefaults.cardColors(containerColor=PersianBlue), modifier=Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(22.dp)) {
-                    Text("درآمد خالص ثبت‌شده", color=Color.White.copy(alpha=.8f), fontSize=14.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(money(allNet), color=Color.White, fontSize=27.sp, fontWeight=FontWeight.Bold)
-                    Spacer(Modifier.height(14.dp))
-                    Row(verticalAlignment=Alignment.CenterVertically) {
-                        Surface(color=Color.White.copy(alpha=.18f), shape=CircleShape) { Text("  امروز: ${persianDigits(today)}  ", color=Color.White, modifier=Modifier.padding(7.dp), fontSize=12.sp) }
-                        Spacer(Modifier.weight(1f))
-                        Icon(Icons.Default.TrendingUp, null, tint=Color.White, modifier=Modifier.size(34.dp))
-                    }
-                }
-            }
-        }
-        item { Text("گزارش درآمد", fontSize=18.sp, fontWeight=FontWeight.Bold) }
-        item {
-            Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                StatCard("امروز", daily, Modifier.weight(1f), PersianBlue)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("امروز", daily, Modifier.weight(1f), BrandGold)
                 StatCard("این هفته", week, Modifier.weight(1f), Mint)
             }
         }
         item {
-            Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatCard("این ماه", month, Modifier.weight(1f), Color(0xFFE59B38))
                 StatCard("امسال", year, Modifier.weight(1f), Color(0xFFDB6D9A))
             }
         }
         item {
-            Card(shape=RoundedCornerShape(20.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment=Alignment.CenterVertically) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(Modifier.weight(1f)) {
-                        Text("هزینه‌های امروز", color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(money(dailyCost), fontSize=19.sp, fontWeight=FontWeight.Bold)
+                        Text(
+                            "هزینه‌های امروز",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(money(dailyCost), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     }
-                    Icon(Icons.Default.Payments, null, tint=Color(0xFFE59B38), modifier=Modifier.size(30.dp))
+                    Icon(
+                        Icons.Default.Payments,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(30.dp)
+                    )
                 }
             }
         }
         item {
-            Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                Button(onClick=onAdd, modifier=Modifier.weight(1f), shape=RoundedCornerShape(15.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("ثبت خدمت") }
-                OutlinedButton(onClick=onExpenses, modifier=Modifier.weight(1f), shape=RoundedCornerShape(15.dp)) { Icon(Icons.Default.ReceiptLong, null); Spacer(Modifier.width(6.dp)); Text("ثبت هزینه") }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onAddService,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("ثبت خدمت")
+                }
+                OutlinedButton(
+                    onClick = onAddExpense,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(15.dp)
+                ) {
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("ثبت هزینه")
+                }
             }
         }
-        item { Text("آخرین فعالیت‌ها", fontSize=18.sp, fontWeight=FontWeight.Bold) }
-        if(records.isEmpty()) item { EmptyState("هنوز اطلاعاتی ثبت نشده؛ اولین خدمت را اضافه کنید.") }
-        items(records.take(5)) { r -> RecordCard(r, onDelete={}) }
+        item { Text("آخرین فعالیت‌ها", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        if (records.isEmpty()) {
+            item {
+                EmptyState("هنوز اطلاعاتی ثبت نشده؛ اولین خدمت را اضافه کنید.")
+            }
+        } else {
+            items(records.take(5), key = { it.id }) { record ->
+                RecordCard(
+                    record = record,
+                    onEdit = { onEdit(record) },
+                    onDelete = { onDelete(record) }
+                )
+            }
+        }
     }
 }
 
 @Composable
-fun StatCard(label:String, amount:Long, modifier:Modifier, accent:Color) {
-    Card(modifier=modifier, shape=RoundedCornerShape(20.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
+private fun HeroCard(net: Long, today: String) {
+    Card(
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = BrandGold,
+            contentColor = OnBrandGold
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(22.dp)) {
+            Text(
+                "درآمد خالص ثبت‌شده",
+                color = OnBrandGold.copy(alpha = 0.78f),
+                fontSize = 14.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                money(net),
+                color = OnBrandGold,
+                fontSize = 27.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = OnBrandGold.copy(alpha = 0.12f),
+                    contentColor = OnBrandGold,
+                    shape = CircleShape
+                ) {
+                    Text(
+                        "  امروز: ${showJalali(today)}  ",
+                        modifier = Modifier.padding(7.dp),
+                        fontSize = 12.sp
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    tint = OnBrandGold,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatCard(label: String, amount: Long, modifier: Modifier, accent: Color) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
         Column(Modifier.padding(15.dp)) {
-            Row(verticalAlignment=Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(9.dp).background(accent, CircleShape))
                 Spacer(Modifier.width(6.dp))
-                Text(label, fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    label,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(Modifier.height(10.dp))
-            Text(money(amount), fontSize=15.sp, fontWeight=FontWeight.Bold, maxLines=1)
+            Text(
+                money(amount),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
 @Composable
-fun RecordsList(records:List<Record>, title:String, store:SalonStore, changed:()->Unit) {
-    Column {
-        Text(title, fontSize=20.sp, fontWeight=FontWeight.Bold, modifier=Modifier.padding(vertical=10.dp))
-        if(records.isEmpty()) EmptyState("موردی وجود ندارد. برای ثبت مورد جدید، دکمه + را بزنید.")
-        else LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp), contentPadding=PaddingValues(bottom=20.dp)) {
-            items(records, key={it.id}) { r ->
-                RecordCard(r, onDelete={store.delete(r.id); changed()})
+private fun RecordsList(
+    title: String,
+    records: List<Record>,
+    showTotal: Boolean,
+    onDelete: (Record) -> Unit,
+    onEdit: (Record) -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp)
+        ) {
+            Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (showTotal) {
+                    "${records.size} مورد · جمع ${money(records.sumOf { it.amount })}"
+                } else {
+                    "${records.size} مورد"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (records.isEmpty()) {
+            EmptyState("موردی وجود ندارد. برای ثبت مورد جدید، دکمه + را بزنید.")
+        } else {
+            LazyColumn(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(records, key = { it.id }) { record ->
+                    RecordCard(
+                        record = record,
+                        onEdit = { onEdit(record) },
+                        onDelete = { onDelete(record) }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun RecordCard(r:Record, onDelete:()->Unit) {
-    Card(shape=RoundedCornerShape(18.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface), modifier=Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.size(43.dp).background(if(r.kind=="expense") Color(0xFFFFE7D8) else Color(0xFFE6E8FF), CircleShape), contentAlignment=Alignment.Center) {
-                Icon(if(r.kind=="expense") Icons.Default.ReceiptLong else if(r.kind=="customer") Icons.Default.Person else Icons.Default.ContentCut,
-                    null, tint=if(r.kind=="expense") Color(0xFFD66B27) else PersianBlue)
+private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit) {
+    val isExpense = record.kind == "expense"
+    val isCustomer = record.kind == "customer"
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val tint: Color
+    val background: Color
+    when {
+        isExpense -> {
+            icon = Icons.Default.ReceiptLong
+            tint = MaterialTheme.colorScheme.error
+            background = Color(0xFFFFE7D8)
+        }
+        isCustomer -> {
+            icon = Icons.Default.Person
+            tint = Color(0xFF8E24AA)
+            background = Color(0xFFF3E5F5)
+        }
+        else -> {
+            icon = Icons.Default.ContentCut
+            tint = MaterialTheme.colorScheme.primary
+            background = Color(0xFFE6E8FF)
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .size(43.dp)
+                    .background(background, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = tint)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(r.title, fontWeight=FontWeight.Bold, maxLines=1)
-                if(r.customer.isNotBlank()) Text(r.customer + if(r.phone.isNotBlank()) " · ${r.phone}" else "", fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(persianDigits(r.date), fontSize=11.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    record.title,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val subtitle = when {
+                    record.customer.isNotBlank() && record.phone.isNotBlank() ->
+                        "${record.customer} · ${record.phone}"
+                    record.customer.isNotBlank() -> record.customer
+                    record.phone.isNotBlank() -> record.phone
+                    else -> ""
+                }
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    showJalali(record.date),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            if(r.kind!="customer") Text(money(r.amount), fontWeight=FontWeight.Bold, fontSize=13.sp,
-                color=if(r.kind=="expense") Color(0xFFE0793D) else MaterialTheme.colorScheme.primary)
-            IconButton(onClick=onDelete) { Icon(Icons.Default.DeleteOutline, "حذف", tint=MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (!isCustomer) {
+                Text(
+                    money(record.amount),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = if (isExpense) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onEdit) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "ویرایش",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Default.DeleteOutline,
+                    contentDescription = "حذف",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }
 
 @Composable
-fun EmptyState(message:String) {
-    Card(shape=RoundedCornerShape(18.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface), modifier=Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(25.dp), horizontalAlignment=Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Inbox, null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(36.dp))
+private fun EmptyState(message: String) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(25.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                Icons.Default.Inbox,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp)
+            )
             Spacer(Modifier.height(8.dp))
-            Text(message, textAlign=TextAlign.Center, color=MaterialTheme.colorScheme.onSurfaceVariant, fontSize=13.sp)
+            Text(
+                message,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+/*───────────────────────── service catalog ─────────────────────────*/
+
+@Composable
+private fun ServiceCatalog(
+    services: List<SalonService>,
+    records: List<Record>,
+    onAdd: () -> Unit,
+    onEdit: (SalonService) -> Unit,
+    onDelete: (SalonService) -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("فهرست خدمات", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "نام و قیمت خدمات آرایشگاه",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(onClick = onAdd, shape = RoundedCornerShape(14.dp)) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("خدمت جدید")
+            }
+        }
+        if (services.isEmpty()) {
+            EmptyState("هنوز خدمتی تعریف نشده است. برای افزودن خدمت، دکمه «خدمت جدید» را بزنید.")
+        } else {
+            LazyColumn(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(services, key = { it.id }) { service ->
+                    val related = records.filter { it.serviceId == service.id }
+                    val relatedIncome = related
+                        .filter { it.kind == "service" }
+                        .sumOf { it.amount }
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(44.dp)
+                                    .background(Color(0xFFE6E8FF), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCut,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    service.name,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (service.description.isNotBlank()) {
+                                    Text(
+                                        service.description,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    money(service.price),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (related.isNotEmpty()) {
+                                    Text(
+                                        "ثبت‌های مرتبط: ${related.size} · درآمد: ${money(relatedIncome)}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { onEdit(service) }) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "ویرایش",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { onDelete(service) }) {
+                                Icon(
+                                    Icons.Default.DeleteOutline,
+                                    contentDescription = "حذف",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/*───────────────────────── form fields ─────────────────────────*/
+
+@Composable
+private fun AmountField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String = "مبلغ (تومان)"
+) {
+    val parsed = parseAmount(value)
+    val invalid = value.isNotBlank() && (parsed == null || parsed <= 0)
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input ->
+            onValueChange(
+                input.filter { character ->
+                    character.isDigit() || character in '۰'..'۹' || character in '٠'..'٩'
+                }.take(15)
+            )
+        },
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        isError = invalid,
+        supportingText = if (invalid) {
+            { Text("مبلغ باید بزرگ‌تر از صفر باشد") }
+        } else {
+            null
+        }
+    )
+}
+
+@Composable
+private fun DateField(value: String, onValueChange: (String) -> Unit) {
+    val invalid = value.isNotBlank() && !isValidJalaliDate(value)
+    Column {
+        OutlinedTextField(
+            value = persianDigits(value),
+            onValueChange = { input -> onValueChange(formatDateInput(input)) },
+            label = { Text("تاریخ شمسی") },
+            placeholder = { Text("۱۴۰۵-۰۸-۲۲") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            isError = invalid,
+            supportingText = if (invalid) {
+                { Text("تاریخ را کامل و درست وارد کنید") }
+            } else {
+                null
+            }
+        )
+        TextButton(onClick = { onValueChange(jalaliToday()) }) {
+            Text("امروز")
         }
     }
 }
 
 @Composable
-fun AddDialog(kind:String, onDismiss:()->Unit, onSave:(String,Long,String,String,String)->Unit) {
+private fun ServiceChips(
+    services: List<SalonService>,
+    selected: Long?,
+    onSelect: (SalonService) -> Unit
+) {
+    if (services.isEmpty()) return
+    Text(
+        "اتصال به خدمت (اختیاری)",
+        fontSize = 12.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        services.forEach { service ->
+            FilterChip(
+                selected = selected == service.id,
+                onClick = { onSelect(service) },
+                label = { Text(service.name) }
+            )
+        }
+    }
+}
+
+/*───────────────────────── add dialog ─────────────────────────*/
+
+@Composable
+private fun AddDialog(
+    kind: String,
+    services: List<SalonService>,
+    onDismiss: () -> Unit,
+    onSave: (String, Long, String, String, String, Long?) -> Unit
+) {
     var title by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(jalaliToday()) }
     var customer by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    val customerOnly = kind=="customer"
-    val expense = kind=="expense"
-    val heading = when(kind) {"expense"->"ثبت هزینه";"customer"->"ثبت مشتری";else->"ثبت خدمت"}
-    AlertDialog(onDismissRequest=onDismiss, title={Text(heading, fontWeight=FontWeight.Bold)},
-        text={
-            Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value=title, onValueChange={title=it}, label={Text(if(customerOnly) "نام مشتری" else if(expense) "عنوان هزینه" else "نام خدمت")}, singleLine=true)
-                if(!customerOnly) {
-                    OutlinedTextField(value=amount, onValueChange={amount=it.filter{c->c.isDigit()}}, label={Text("مبلغ (تومان)")},
-                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), singleLine=true)
-                    OutlinedTextField(value=date, onValueChange={date=it.filter{c->c.isDigit()||c=='-'}.take(10)}, label={Text("تاریخ شمسی (YYYY-MM-DD)")}, singleLine=true)
+    var selectedService by remember { mutableStateOf<Long?>(null) }
+    val customerOnly = kind == "customer"
+    val expense = kind == "expense"
+    val parsedAmount = parseAmount(amount)
+    val validAmount = !customerOnly && parsedAmount != null && parsedAmount > 0
+    val canSave = title.isNotBlank() && isValidJalaliDate(date) && (customerOnly || validAmount)
+    val heading = when {
+        customerOnly -> "ثبت مشتری"
+        expense -> "ثبت هزینه"
+        else -> "ثبت خدمت"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(heading, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = {
+                        Text(
+                            if (customerOnly) {
+                                "نام مشتری"
+                            } else if (expense) {
+                                "عنوان هزینه"
+                            } else {
+                                "نام خدمت"
+                            }
+                        )
+                    },
+                    singleLine = true
+                )
+                if (!customerOnly) {
+                    AmountField(value = amount, onValueChange = { amount = it })
                 }
-                if(!expense) {
-                    OutlinedTextField(value=customer, onValueChange={customer=it}, label={Text(if(customerOnly) "یادداشت (اختیاری)" else "نام مشتری (اختیاری)")}, singleLine=true)
-                    OutlinedTextField(value=phone, onValueChange={phone=it.filter{c->c.isDigit()||c=='+'}.take(15)}, label={Text("شماره تماس")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Phone), singleLine=true)
+                DateField(value = date, onValueChange = { date = it })
+                if (customerOnly || !expense) {
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { input ->
+                            phone = input.filter {
+                                it.isDigit() || it == '+' || it == '-' || it == ' '
+                            }.take(20)
+                        },
+                        label = { Text("شماره تماس (اختیاری)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customer,
+                        onValueChange = { customer = it },
+                        label = {
+                            Text(if (customerOnly) "یادداشت (اختیاری)" else "نام مشتری (اختیاری)")
+                        },
+                        singleLine = !customerOnly,
+                        minLines = if (customerOnly) 2 else 1
+                    )
+                }
+                if (!customerOnly && !expense) {
+                    ServiceChips(
+                        services = services,
+                        selected = selectedService,
+                        onSelect = { service ->
+                            if (selectedService == service.id) {
+                                selectedService = null
+                            } else {
+                                selectedService = service.id
+                                if (title.isBlank()) title = service.name
+                                if (amount.isBlank()) amount = service.price.toString()
+                            }
+                        }
+                    )
                 }
             }
         },
-        confirmButton={ Button(onClick={
-            if(title.isNotBlank() && (customerOnly || amount.toLongOrNull()!=null && date.length==10))
-                onSave(title, amount.toLongOrNull() ?: 0L, date, customer, phone)
-        }, enabled=title.isNotBlank() && (customerOnly || amount.toLongOrNull()!=null && date.length==10)) { Text("ذخیره") } },
-        dismissButton={ TextButton(onClick=onDismiss) { Text("انصراف") } }
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        title.trim(),
+                        if (customerOnly) 0L else parsedAmount!!,
+                        normalizeDate(date),
+                        customer.trim(),
+                        phone.toAsciiDigits().trim(),
+                        if (customerOnly || expense) null else selectedService
+                    )
+                },
+                enabled = canSave
+            ) {
+                Text("ذخیره")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("انصراف") }
+        }
     )
 }
 
+/*───────────────────────── record editor ─────────────────────────*/
 
 @Composable
-fun ServiceCatalog(store: SalonStore, refreshKey: Int, onChanged: () -> Unit, onEdit: (SalonService) -> Unit, onAdd: () -> Unit) {
-    var listRefresh by remember { mutableIntStateOf(0) }
-    val services = remember(listRefresh, refreshKey) { store.services() }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(vertical=10.dp), verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("فهرست خدمات", fontSize=21.sp, fontWeight=FontWeight.Bold)
-                Text("نام و قیمت خدمات آرایشگاه", fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Button(onClick=onAdd, shape=RoundedCornerShape(14.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("خدمت جدید") }
-        }
-        if (services.isEmpty()) EmptyState("هنوز خدمتی تعریف نشده است. برای افزودن خدمت، دکمه «خدمت جدید» را بزنید.")
-        else LazyColumn(verticalArrangement=Arrangement.spacedBy(9.dp), contentPadding=PaddingValues(bottom=20.dp)) {
-            items(services, key={it.id}) { service ->
-                Card(shape=RoundedCornerShape(18.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface), modifier=Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment=Alignment.CenterVertically) {
-                        Box(Modifier.size(44.dp).background(Color(0xFFE6E8FF), CircleShape), contentAlignment=Alignment.Center) { Icon(Icons.Default.ContentCut, null, tint=PersianBlue) }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(service.name, fontWeight=FontWeight.Bold)
-                            if (service.description.isNotBlank()) Text(service.description, fontSize=12.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(money(service.price), color=MaterialTheme.colorScheme.primary, fontWeight=FontWeight.Bold)
+private fun RecordEditorDialog(
+    record: Record,
+    services: List<SalonService>,
+    onDismiss: () -> Unit,
+    onSave: (String, Long, String, String, String, Long?) -> Unit
+) {
+    var title by remember(record.id) { mutableStateOf(record.title) }
+    var amount by remember(record.id) { mutableStateOf(record.amount.toString()) }
+    var date by remember(record.id) { mutableStateOf(normalizeDate(record.date)) }
+    var customer by remember(record.id) { mutableStateOf(record.customer) }
+    var phone by remember(record.id) { mutableStateOf(record.phone) }
+    var selectedService by remember(record.id) { mutableStateOf(record.serviceId) }
+    val customerOnly = record.kind == "customer"
+    val expense = record.kind == "expense"
+    val parsedAmount = parseAmount(amount)
+    val validAmount = !customerOnly && parsedAmount != null && parsedAmount > 0
+    val canSave = title.isNotBlank() && isValidJalaliDate(date) && (customerOnly || validAmount)
+    val heading = when {
+        customerOnly -> "ویرایش مشتری"
+        expense -> "ویرایش هزینه"
+        else -> "ویرایش خدمت"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(heading, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = {
+                        Text(
+                            if (customerOnly) {
+                                "نام مشتری"
+                            } else if (expense) {
+                                "عنوان هزینه"
+                            } else {
+                                "نام خدمت"
+                            }
+                        )
+                    },
+                    singleLine = true
+                )
+                if (!customerOnly) {
+                    AmountField(value = amount, onValueChange = { amount = it })
+                }
+                DateField(value = date, onValueChange = { date = it })
+                if (customerOnly || !expense) {
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { input ->
+                            phone = input.filter {
+                                it.isDigit() || it == '+' || it == '-' || it == ' '
+                            }.take(20)
+                        },
+                        label = { Text("شماره تماس (اختیاری)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = customer,
+                        onValueChange = { customer = it },
+                        label = {
+                            Text(if (customerOnly) "یادداشت (اختیاری)" else "نام مشتری (اختیاری)")
+                        },
+                        singleLine = !customerOnly,
+                        minLines = if (customerOnly) 2 else 1
+                    )
+                }
+                if (!customerOnly && !expense) {
+                    ServiceChips(
+                        services = services,
+                        selected = selectedService,
+                        onSelect = { service ->
+                            selectedService =
+                                if (selectedService == service.id) null else service.id
                         }
-                        IconButton(onClick={onEdit(service)}) { Icon(Icons.Default.Edit, "ویرایش") }
-                        IconButton(onClick={store.deleteService(service.id); listRefresh++; onChanged()}) { Icon(Icons.Default.DeleteOutline, "حذف", tint=Color(0xFFD95757)) }
-                    }
+                    )
                 }
             }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        title.trim(),
+                        if (customerOnly) 0L else parsedAmount!!,
+                        normalizeDate(date),
+                        customer.trim(),
+                        phone.toAsciiDigits().trim(),
+                        if (customerOnly || expense) null else selectedService
+                    )
+                },
+                enabled = canSave
+            ) {
+                Text("ذخیره")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("انصراف") }
         }
+    )
+}
+
+/*───────────────────────── service editor ─────────────────────────*/
+
+@Composable
+private fun ServiceEditorDialog(
+    service: SalonService?,
+    onDismiss: () -> Unit,
+    onSave: (Long?, String, Long, String) -> Unit
+) {
+    var name by remember(service?.id) { mutableStateOf(service?.name ?: "") }
+    var price by remember(service?.id) { mutableStateOf(service?.price?.toString() ?: "") }
+    var description by remember(service?.id) {
+        mutableStateOf(service?.description ?: "")
+    }
+    val parsedPrice = parseAmount(price)
+    val canSave = name.isNotBlank() && parsedPrice != null && parsedPrice > 0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (service == null) "افزودن خدمت جدید" else "ویرایش خدمت",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("نام خدمت") },
+                    singleLine = true
+                )
+                AmountField(
+                    value = price,
+                    onValueChange = { price = it },
+                    label = "قیمت (تومان)"
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("توضیحات (اختیاری)") },
+                    minLines = 2
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(service?.id, name.trim(), parsedPrice!!, description.trim())
+                },
+                enabled = canSave
+            ) {
+                Text("ذخیره")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("انصراف") }
+        }
+    )
+}
+
+/*───────────────────────── delete confirmation ─────────────────────────*/
+
+@Composable
+private fun ConfirmDeleteDialog(
+    target: DeleteTarget,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val label = when (target.kind) {
+        "catalog" -> "خدمت"
+        "service" -> "رکورد خدمت"
+        "expense" -> "هزینه"
+        "customer" -> "مشتری"
+        else -> "مورد"
+    }
+    val message = if (target.kind == "catalog") {
+        "با حذف «${target.title}»، ارتباط رکوردهای مالی با این خدمت قطع می‌شود؛ اما خود رکوردها حذف نمی‌شوند."
+    } else {
+        "آیا از حذف «${target.title}» مطمئن هستید؟ این عمل قابل بازگشت نیست."
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("حذف $label؟", fontWeight = FontWeight.Bold) },
+        text = { Text(message) },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("حذف")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("انصراف") }
+        }
+    )
+}
+
+/*───────────────────────── about screen ─────────────────────────*/
+
+@Composable
+private fun AboutScreen(store: SalonStore) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openOutputStream(uri)?.use { output ->
+                            output.write(store.exportCsv().toByteArray(Charsets.UTF_8))
+                            true
+                        } ?: false
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    if (ok) "فایل پشتیبان ذخیره شد" else "ذخیره فایل ناموفق بود",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(top = 12.dp, bottom = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.alvand_salon_logo),
+            contentDescription = "لوگوی آرایشگاه الوند",
+            modifier = Modifier.size(104.dp)
+        )
+        Spacer(Modifier.height(14.dp))
+        Text("مدیریت آرایشگاه الوند", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Alvand Salon Manager", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp))
+        AboutCard(title = "درباره برنامه") {
+            Text(
+                "این برنامه برای ثبت خدمات، درآمد، هزینه‌ها و مشتریان آرایشگاه طراحی شده است. " +
+                    "اطلاعات به‌صورت محلی و بدون نیاز به اینترنت ذخیره می‌شود."
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        AboutCard(title = "داده‌ها و پشتیبان‌گیری") {
+            Text(
+                "از همین صفحه می‌توانید یک فایل CSV از داده‌ها تهیه کنید. " +
+                    "پیش از حذف برنامه یا انتقال گوشی، از این فایل پشتیبان بگیرید."
+            )
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    exportLauncher.launch("AlvandSalonManager-backup-${jalaliToday()}.csv")
+                },
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.FileDownload, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("خروجی CSV از داده‌ها")
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        AboutCard(title = "سازنده") {
+            Text(
+                "این برنامه با تلاش سازنده پروژه الوند و با کمک ابزارهای هوش مصنوعی توسعه داده شده است."
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "https://github.com/Alvandcode/",
+                color = MaterialTheme.colorScheme.primary,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier.clickable {
+                    try {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Alvandcode/"))
+                        )
+                    } catch (_: Exception) {
+                        // No browser installed.
+                    }
+                }
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "نسخه ${BuildConfig.VERSION_NAME} (کد ${BuildConfig.VERSION_CODE})",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
-fun ServiceEditorDialog(service: SalonService?, onDismiss: () -> Unit, onSave: (Long?, String, Long, String) -> Unit) {
-    var name by remember(service?.id) { mutableStateOf(service?.name ?: "") }
-    var price by remember(service?.id) { mutableStateOf(service?.price?.toString() ?: "") }
-    var description by remember(service?.id) { mutableStateOf(service?.description ?: "") }
-    AlertDialog(
-        onDismissRequest=onDismiss,
-        title={Text(if (service == null) "افزودن خدمت جدید" else "ویرایش خدمت", fontWeight=FontWeight.Bold)},
-        text={
-            Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value=name, onValueChange={name=it}, label={Text("نام خدمت")}, singleLine=true)
-                OutlinedTextField(value=price, onValueChange={price=it.filter { ch -> ch.isDigit() }}, label={Text("قیمت (تومان)")}, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number), singleLine=true)
-                OutlinedTextField(value=description, onValueChange={description=it}, label={Text("توضیحات (اختیاری)")}, minLines=2)
-            }
-        },
-        confirmButton={Button(onClick={onSave(service?.id, name.trim(), price.toLong(), description.trim())}, enabled=name.isNotBlank() && (price.toLongOrNull() ?: 0L) > 0L) { Text("ذخیره")}},
-        dismissButton={TextButton(onClick=onDismiss) { Text("انصراف")}}
-    )
-}
-
-@Composable
-fun AboutScreen() {
-    val context = LocalContext.current
-    Column(Modifier.fillMaxWidth().padding(top=18.dp), horizontalAlignment=Alignment.CenterHorizontally) {
-        Image(painter=painterResource(id=R.drawable.alvand_salon_logo), contentDescription="لوگوی آرایشگاه الوند", modifier=Modifier.size(104.dp))
-        Spacer(Modifier.height(14.dp))
-        Text("مدیریت آرایشگاه الوند", fontSize=22.sp, fontWeight=FontWeight.Bold)
-        Text("Alvand Salon Manager", color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(18.dp))
-        Card(shape=RoundedCornerShape(20.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface)) {
-            Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                Text("درباره سازنده", fontWeight=FontWeight.Bold, fontSize=18.sp)
-                Spacer(Modifier.height(8.dp))
-                Text("این برنامه با کمک ابزارهای هوش مصنوعی و تلاش سازنده پروژه الوند توسعه داده شده است.")
-                Spacer(Modifier.height(14.dp))
-                Text("گیت‌هاب سازنده", fontWeight=FontWeight.SemiBold, color=MaterialTheme.colorScheme.primary)
-                Text("https://github.com/Alvandcode/", color=MaterialTheme.colorScheme.primary,
-                    modifier=Modifier.clickable {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Alvandcode/")))
-                    })
-                Spacer(Modifier.height(12.dp))
-                Text("نسخه برنامه: ${BuildConfig.VERSION_NAME}", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+private fun AboutCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Spacer(Modifier.height(8.dp))
+            content()
         }
     }
 }

@@ -1,4 +1,4 @@
-name: Android APK and Release
+name: Build and Release APK
 
 on:
   push:
@@ -8,61 +8,109 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
 
       - name: Install Android SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Read app version
+      - name: Read base version
         id: version
         shell: bash
         run: |
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "release_version=${VERSION}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          RELEASE_VERSION="${VERSION}.${GITHUB_RUN_NUMBER}"
+          VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))
+          echo "base=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Version: $RELEASE_VERSION ($VERSION_CODE)"
 
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Apply release version
+        shell: bash
+        run: |
+          sed -i -E "s/versionCode = [0-9]+/versionCode = ${{ steps.version.outputs.code }}/" app/build.gradle.kts
+          sed -i -E "s/versionName = \"[^\"]+\"/versionName = \"${{ steps.version.outputs.release }}\"/" app/build.gradle.kts
+          grep -nE 'versionCode|versionName' app/build.gradle.kts
 
-      - name: Prepare versioned APK
+      - name: Decode release signing key
+        shell: bash
+        run: |
+          echo "${{ secrets.RELEASE_SIGNING_KEYSTORE_B64 }}" | base64 -d > release-keystore.jks
+          test -s release-keystore.jks
+
+      - name: Build signed release APK
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Name APK with app and version
         shell: bash
         run: |
           mkdir -p release-files
-          cp app/build/outputs/apk/debug/app-debug.apk "release-files/AlvandSalonManager-v${{ steps.version.outputs.release_version }}-Android.apk"
-          cp README.md "release-files/AlvandSalonManager-v${{ steps.version.outputs.release_version }}-README.md"
+          cp app/build/outputs/apk/release/app-release.apk \
+            "release-files/AlvandSalonManager-v${{ steps.version.outputs.release }}-Android.apk"
+          ls -lh release-files
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AlvandSalonManager-v${{ steps.version.outputs.release_version }}
-          path: release-files/*
+          name: AlvandSalonManager-v${{ steps.version.outputs.release }}
+          path: release-files/*.apk
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.release_version }}
-          name: Alvand Salon Manager v${{ steps.version.outputs.release_version }}
-          generate_release_notes: true
-          files: release-files/*
+          tag_name: v${{ steps.version.outputs.release }}
+          name: Alvand Salon Manager v${{ steps.version.outputs.release }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            ## Alvand Salon Manager v${{ steps.version.outputs.release }}
+
+            فایل نصب: `AlvandSalonManager-v${{ steps.version.outputs.release }}-Android.apk`
+
+            ### نصب
+            - اگر نسخه قبلی با امضای متفاوت روی گوشی نصب است، ابتدا آن را حذف کنید و سپس این نسخه را نصب کنید.
+            - حداقل نسخه اندروید: ۹ (API 28)
+
+            ### تغییرات مهم
+            - رفع خطای ساخت پروژه و فعال‌سازی `BuildConfig`
+            - پشتیبانی از ارقام فارسی در مبلغ‌ها و تاریخ‌ها
+            - اعتبارسنجی تاریخ شمسی و شروع هفته از شنبه
+            - تأییدیه حذف، ویرایش رکوردها و مدیریت ارتباط خدمات
+            - اصلاح کنتراست تم تیره/روشن و راست‌چین کردن رابط
+            - افزودن آیکون برنامه و خروجی پشتیبان CSV
+            - ساخت و امضای خودکار APK با نام و نسخه در فایل خروجی
+          files: release-files/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

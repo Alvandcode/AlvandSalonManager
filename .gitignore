@@ -4,3 +4,11 @@ local.properties
 **/build/
 .DS_Store
 *.iml
+*.jks
+*.keystore
+*.b64
+release-keystore*
+debug-keystore
+captures/
+.externalNativeBuild/
+.cxx/
