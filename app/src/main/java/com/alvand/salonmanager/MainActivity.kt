@@ -25,20 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ContentCut
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -488,7 +474,7 @@ fun SalonApp(store: SalonStore) {
     var services by remember { mutableStateOf(store.services()) }
     var showAdd by remember { mutableStateOf(false) }
     var addKind by remember { mutableStateOf("service") }
-    var showServiceEditor by remember { mutableStateOf(false) }
+    var showServiceIcons.Default.Editor by remember { mutableStateOf(false) }
     var editingService by remember { mutableStateOf<SalonService?>(null) }
     var editingRecord by remember { mutableStateOf<Record?>(null) }
     var deleteTarget by remember { mutableStateOf<DeleteTarget?>(null) }
@@ -575,11 +561,11 @@ fun SalonApp(store: SalonStore) {
                 bottomBar = {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         listOf(
-                            Triple(TAB_HOME, "Home", Dashboard),
-                            Triple(TAB_SERVICES, "Services", ContentCut),
-                            Triple(TAB_EXPENSES, "Expenses", ReceiptLong),
-                            Triple(TAB_CUSTOMERS, "Customers", Person),
-                            Triple(TAB_ABOUT, "About", Info)
+                            Triple(TAB_HOME, "Home", Icons.Default.Dashboard),
+                            Triple(TAB_SERVICES, "Services", Icons.Default.ContentCut),
+                            Triple(TAB_EXPENSES, "Expenses", Icons.Default.ReceiptLong),
+                            Triple(TAB_CUSTOMERS, "Customers", Icons.Default.Person),
+                            Triple(TAB_ABOUT, "About", Icons.Default.Info)
                         ).forEach { (tabName, label, icon) ->
                             NavigationBarItem(
                                 selected = tab == tabName,
@@ -600,7 +586,7 @@ fun SalonApp(store: SalonStore) {
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ) {
-                            Icon(Add, contentDescription = "Add")
+                            Icon(Icons.Default.Add, contentDescription = "Add")
                         }
                     }
                 }
@@ -614,7 +600,7 @@ fun SalonApp(store: SalonStore) {
                     Header(dark = dark, onToggleTheme = { dark = !dark })
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         when (tab) {
-                            TAB_HOME -> Dashboard(
+                            TAB_HOME -> HomeScreen(
                                 records = records,
                                 onAddService = {
                                     addKind = "service"
@@ -627,18 +613,18 @@ fun SalonApp(store: SalonStore) {
                                 onDelete = { record ->
                                     deleteTarget = DeleteTarget(record.id, record.kind, record.title)
                                 },
-                                onEdit = { editingRecord = it }
+                                onIcons.Default.Edit = { editingRecord = it }
                             )
                             TAB_SERVICES -> ServiceCatalog(
                                 services = services,
                                 records = records,
                                 onAdd = {
                                     editingService = null
-                                    showServiceEditor = true
+                                    showServiceIcons.Default.Editor = true
                                 },
-                                onEdit = {
+                                onIcons.Default.Edit = {
                                     editingService = it
-                                    showServiceEditor = true
+                                    showServiceIcons.Default.Editor = true
                                 },
                                 onDelete = {
                                     deleteTarget = DeleteTarget(it.id, "catalog", it.name)
@@ -651,7 +637,7 @@ fun SalonApp(store: SalonStore) {
                                 onDelete = { record ->
                                     deleteTarget = DeleteTarget(record.id, record.kind, record.title)
                                 },
-                                onEdit = { editingRecord = it }
+                                onIcons.Default.Edit = { editingRecord = it }
                             )
                             TAB_CUSTOMERS -> RecordsList(
                                 title = "Customers",
@@ -660,7 +646,7 @@ fun SalonApp(store: SalonStore) {
                                 onDelete = { record ->
                                     deleteTarget = DeleteTarget(record.id, record.kind, record.title)
                                 },
-                                onEdit = { editingRecord = it }
+                                onIcons.Default.Edit = { editingRecord = it }
                             )
                             else -> AboutScreen(store)
                         }
@@ -682,32 +668,32 @@ fun SalonApp(store: SalonStore) {
                 )
             }
 
-            if (showServiceEditor) {
-                ServiceEditorDialog(
+            if (showServiceIcons.Default.Editor) {
+                ServiceIcons.Default.EditorDialog(
                     service = editingService,
                     onDismiss = {
-                        showServiceEditor = false
+                        showServiceIcons.Default.Editor = false
                         editingService = null
                     },
                     onSave = { id, name, price, description ->
                         mutate { store.saveService(id, name, price, description) }
-                        showServiceEditor = false
+                        showServiceIcons.Default.Editor = false
                         editingService = null
                     }
                 )
             }
 
-            val recordBeingEdited = editingRecord
-            if (recordBeingEdited != null) {
-                RecordEditorDialog(
-                    record = recordBeingEdited,
+            val recordBeingIcons.Default.Edited = editingRecord
+            if (recordBeingIcons.Default.Edited != null) {
+                RecordIcons.Default.EditorDialog(
+                    record = recordBeingIcons.Default.Edited,
                     services = services,
                     onDismiss = { editingRecord = null },
                     onSave = { title, amount, date, customer, phone, serviceId ->
                         mutate {
                             store.updateRecord(
-                                recordBeingEdited.id,
-                                recordBeingEdited.kind,
+                                recordBeingIcons.Default.Edited.id,
+                                recordBeingIcons.Default.Edited.kind,
                                 title,
                                 amount,
                                 date,
@@ -767,7 +753,7 @@ private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
         }
         IconButton(onClick = onToggleTheme) {
             Icon(
-                if (dark) LightMode else DarkMode,
+                if (dark) Icons.Default.LightMode else Icons.Default.DarkMode,
                 contentDescription = "Toggle theme"
             )
         }
@@ -775,12 +761,12 @@ private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
 }
 
 @Composable
-private fun Dashboard(
+private fun HomeScreen(
     records: List<Record>,
     onAddService: () -> Unit,
     onAddExpense: () -> Unit,
     onDelete: (Record) -> Unit,
-    onEdit: (Record) -> Unit
+    onIcons.Default.Edit: (Record) -> Unit
 ) {
     val today = jalaliToday()
     val income = records.filter { it.kind == "service" }
@@ -837,7 +823,7 @@ private fun Dashboard(
                         Text(money(dailyCost), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     }
                     Icon(
-                        Payments,
+                        Icons.Default.Payments,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(30.dp)
@@ -852,7 +838,7 @@ private fun Dashboard(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(15.dp)
                 ) {
-                    Icon(Add, contentDescription = null)
+                    Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text("Register Service")
                 }
@@ -861,7 +847,7 @@ private fun Dashboard(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(15.dp)
                 ) {
-                    Icon(ReceiptLong, contentDescription = null)
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text("Register Expense")
                 }
@@ -876,7 +862,7 @@ private fun Dashboard(
             items(records.take(5), key = { it.id }) { record ->
                 RecordCard(
                     record = record,
-                    onEdit = { onEdit(record) },
+                    onIcons.Default.Edit = { onIcons.Default.Edit(record) },
                     onDelete = { onDelete(record) }
                 )
             }
@@ -922,7 +908,7 @@ private fun HeroCard(net: Long, today: String) {
                 }
                 Spacer(Modifier.weight(1f))
                 Icon(
-                    TrendingUp,
+                    Icons.Default.TrendingUp,
                     contentDescription = null,
                     tint = OnBrandGold,
                     modifier = Modifier.size(34.dp)
@@ -969,7 +955,7 @@ private fun RecordsList(
     records: List<Record>,
     showTotal: Boolean,
     onDelete: (Record) -> Unit,
-    onEdit: (Record) -> Unit
+    onIcons.Default.Edit: (Record) -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
         Column(
@@ -999,7 +985,7 @@ private fun RecordsList(
                 items(records, key = { it.id }) { record ->
                     RecordCard(
                         record = record,
-                        onEdit = { onEdit(record) },
+                        onIcons.Default.Edit = { onIcons.Default.Edit(record) },
                         onDelete = { onDelete(record) }
                     )
                 }
@@ -1009,7 +995,7 @@ private fun RecordsList(
 }
 
 @Composable
-private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun RecordCard(record: Record, onIcons.Default.Edit: () -> Unit, onDelete: () -> Unit) {
     val isExpense = record.kind == "expense"
     val isCustomer = record.kind == "customer"
     val icon: androidx.compose.ui.graphics.vector.ImageVector
@@ -1017,17 +1003,17 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
     val background: Color
     when {
         isExpense -> {
-            icon = ReceiptLong
+            icon = Icons.Default.ReceiptLong
             tint = MaterialTheme.colorScheme.error
             background = Color(0xFFFFE7D8)
         }
         isCustomer -> {
-            icon = Person
+            icon = Icons.Default.Person
             tint = Color(0xFF8E24AA)
             background = Color(0xFFF3E5F5)
         }
         else -> {
-            icon = ContentCut
+            icon = Icons.Default.ContentCut
             tint = MaterialTheme.colorScheme.primary
             background = Color(0xFFE6E8FF)
         }
@@ -1096,16 +1082,16 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onEdit) {
+            IconButton(onClick = onIcons.Default.Edit) {
                 Icon(
-                    Edit,
-                    contentDescription = "Edit",
+                    Icons.Default.Edit,
+                    contentDescription = "Icons.Default.Edit",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
-                    DeleteOutline,
+                    Icons.Default.DeleteOutline,
                     contentDescription = "Delete",
                     tint = MaterialTheme.colorScheme.error
                 )
@@ -1130,7 +1116,7 @@ private fun EmptyState(message: String) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
-                Inbox,
+                Icons.Default.Inbox,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
@@ -1153,7 +1139,7 @@ private fun ServiceCatalog(
     services: List<SalonService>,
     records: List<Record>,
     onAdd: () -> Unit,
-    onEdit: (SalonService) -> Unit,
+    onIcons.Default.Edit: (SalonService) -> Unit,
     onDelete: (SalonService) -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -1172,7 +1158,7 @@ private fun ServiceCatalog(
                 )
             }
             Button(onClick = onAdd, shape = RoundedCornerShape(14.dp)) {
-                Icon(Add, contentDescription = null)
+                Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("New Service")
             }
@@ -1208,7 +1194,7 @@ private fun ServiceCatalog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    ContentCut,
+                                    Icons.Default.ContentCut,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1243,16 +1229,16 @@ private fun ServiceCatalog(
                                     )
                                 }
                             }
-                            IconButton(onClick = { onEdit(service) }) {
+                            IconButton(onClick = { onIcons.Default.Edit(service) }) {
                                 Icon(
-                                    Edit,
-                                    contentDescription = "Edit",
+                                    Icons.Default.Edit,
+                                    contentDescription = "Icons.Default.Edit",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(onClick = { onDelete(service) }) {
                                 Icon(
-                                    DeleteOutline,
+                                    Icons.Default.DeleteOutline,
                                     contentDescription = "Delete",
                                     tint = MaterialTheme.colorScheme.error
                                 )
@@ -1467,7 +1453,7 @@ private fun AddDialog(
 /*───────────────────────── record editor ─────────────────────────*/
 
 @Composable
-private fun RecordEditorDialog(
+private fun RecordIcons.Default.EditorDialog(
     record: Record,
     services: List<SalonService>,
     onDismiss: () -> Unit,
@@ -1485,9 +1471,9 @@ private fun RecordEditorDialog(
     val validAmount = !customerOnly && parsedAmount != null && parsedAmount > 0
     val canSave = title.isNotBlank() && isValidJalaliDate(date) && (customerOnly || validAmount)
     val heading = when {
-        customerOnly -> "Edit Customer"
-        expense -> "Edit Expense"
-        else -> "Edit Service"
+        customerOnly -> "Icons.Default.Edit Customer"
+        expense -> "Icons.Default.Edit Expense"
+        else -> "Icons.Default.Edit Service"
     }
 
     AlertDialog(
@@ -1578,7 +1564,7 @@ private fun RecordEditorDialog(
 /*───────────────────────── service editor ─────────────────────────*/
 
 @Composable
-private fun ServiceEditorDialog(
+private fun ServiceIcons.Default.EditorDialog(
     service: SalonService?,
     onDismiss: () -> Unit,
     onSave: (Long?, String, Long, String) -> Unit
@@ -1595,7 +1581,7 @@ private fun ServiceEditorDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (service == null) "Add New Service" else "Edit Service",
+                if (service == null) "Add New Service" else "Icons.Default.Edit Service",
                 fontWeight = FontWeight.Bold
             )
         },
@@ -1729,7 +1715,7 @@ private fun AboutScreen(store: SalonStore) {
         AboutCard(title = "About") {
             Text(
                 "This app is designed to register services, income, expenses, and customers for a salon. " +
-                    "Information is stored locally and does not require internet."
+                    "Icons.Default.Information is stored locally and does not require internet."
             )
         }
         Spacer(Modifier.height(12.dp))
@@ -1745,7 +1731,7 @@ private fun AboutScreen(store: SalonStore) {
                 },
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(FileDownload, contentDescription = null)
+                Icon(Icons.Default.FileDownload, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Export CSV Backup")
             }
