@@ -25,7 +25,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add as AddIcon
+import androidx.compose.material.icons.filled.ContentCut as ContentCutIcon
+import androidx.compose.material.icons.filled.DeleteOutline as DeleteOutlineIcon
+import androidx.compose.material.icons.filled.Edit as EditIcon
+import androidx.compose.material.icons.filled.FileDownload as FileDownloadIcon
+import androidx.compose.material.icons.filled.Inbox as InboxIcon
+import androidx.compose.material.icons.filled.LightMode as LightModeIcon
+import androidx.compose.material.icons.filled.Payments as PaymentsIcon
+import androidx.compose.material.icons.filled.Person as PersonIcon
+import androidx.compose.material.icons.filled.ReceiptLong as ReceiptLongIcon
+import androidx.compose.material.icons.filled.TrendingUp as TrendingUpIcon
+import androidx.compose.material.icons.filled.Dashboard as DashboardIcon
+import androidx.compose.material.icons.filled.DarkMode as DarkModeIcon
+import androidx.compose.material.icons.filled.Info as InfoIcon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -562,11 +575,11 @@ fun SalonApp(store: SalonStore) {
                 bottomBar = {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         listOf(
-                            Triple(TAB_HOME, "Home", Icons.Default.Dashboard),
-                            Triple(TAB_SERVICES, "Services", Icons.Default.ContentCut),
-                            Triple(TAB_EXPENSES, "Expenses", Icons.Default.ReceiptLong),
-                            Triple(TAB_CUSTOMERS, "Customers", Icons.Default.People),
-                            Triple(TAB_ABOUT, "About", Icons.Default.Info)
+                            Triple(TAB_HOME, "Home", DashboardIcon),
+                            Triple(TAB_SERVICES, "Services", ContentCutIcon),
+                            Triple(TAB_EXPENSES, "Expenses", ReceiptLongIcon),
+                            Triple(TAB_CUSTOMERS, "Customers", PersonIcon),
+                            Triple(TAB_ABOUT, "About", InfoIcon)
                         ).forEach { (tabName, label, icon) ->
                             NavigationBarItem(
                                 selected = tab == tabName,
@@ -587,7 +600,7 @@ fun SalonApp(store: SalonStore) {
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add")
+                            Icon(AddIcon, contentDescription = "Add")
                         }
                     }
                 }
@@ -754,7 +767,7 @@ private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
         }
         IconButton(onClick = onToggleTheme) {
             Icon(
-                if (dark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                if (dark) LightModeIcon else DarkModeIcon,
                 contentDescription = "Toggle theme"
             )
         }
@@ -824,7 +837,7 @@ private fun HomeScreen(
                         Text(money(dailyCost), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     }
                     Icon(
-                        Icons.Default.Payments,
+                        PaymentsIcon,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(30.dp)
@@ -839,7 +852,7 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(15.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
+                    Icon(AddIcon, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text("Register Service")
                 }
@@ -848,7 +861,7 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(15.dp)
                 ) {
-                    Icon(Icons.Default.ReceiptLong, contentDescription = null)
+                    Icon(ReceiptLongIcon, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text("Register Expense")
                 }
@@ -909,7 +922,7 @@ private fun HeroCard(net: Long, today: String) {
                 }
                 Spacer(Modifier.weight(1f))
                 Icon(
-                    Icons.Default.TrendingUp,
+                    TrendingUpIcon,
                     contentDescription = null,
                     tint = OnBrandGold,
                     modifier = Modifier.size(34.dp)
@@ -1004,17 +1017,17 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
     val background: Color
     when {
         isExpense -> {
-            icon = Icons.Default.ReceiptLong
+            icon = ReceiptLongIcon
             tint = MaterialTheme.colorScheme.error
             background = Color(0xFFFFE7D8)
         }
         isCustomer -> {
-            icon = Icons.Default.Person
+            icon = PersonIcon
             tint = Color(0xFF8E24AA)
             background = Color(0xFFF3E5F5)
         }
         else -> {
-            icon = Icons.Default.ContentCut
+            icon = ContentCutIcon
             tint = MaterialTheme.colorScheme.primary
             background = Color(0xFFE6E8FF)
         }
@@ -1085,14 +1098,14 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
             }
             IconButton(onClick = onEdit) {
                 Icon(
-                    Icons.Default.Edit,
+                    EditIcon,
                     contentDescription = "Edit",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
-                    Icons.Default.DeleteOutline,
+                    DeleteOutlineIcon,
                     contentDescription = "Delete",
                     tint = MaterialTheme.colorScheme.error
                 )
@@ -1117,7 +1130,7 @@ private fun EmptyState(message: String) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
-                Icons.Default.Inbox,
+                InboxIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
@@ -1159,7 +1172,7 @@ private fun ServiceCatalog(
                 )
             }
             Button(onClick = onAdd, shape = RoundedCornerShape(14.dp)) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Icon(AddIcon, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("New Service")
             }
@@ -1195,7 +1208,7 @@ private fun ServiceCatalog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Default.ContentCut,
+                                    ContentCutIcon,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -1232,14 +1245,14 @@ private fun ServiceCatalog(
                             }
                             IconButton(onClick = { onEdit(service) }) {
                                 Icon(
-                                    Icons.Default.Edit,
+                                    EditIcon,
                                     contentDescription = "Edit",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(onClick = { onDelete(service) }) {
                                 Icon(
-                                    Icons.Default.DeleteOutline,
+                                    DeleteOutlineIcon,
                                     contentDescription = "Delete",
                                     tint = MaterialTheme.colorScheme.error
                                 )
@@ -1732,7 +1745,7 @@ private fun AboutScreen(store: SalonStore) {
                 },
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Icon(Icons.Default.FileDownload, contentDescription = null)
+                Icon(FileDownloadIcon, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Export CSV Backup")
             }
