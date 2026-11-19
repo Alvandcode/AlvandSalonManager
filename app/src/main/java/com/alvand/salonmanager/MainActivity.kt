@@ -40,12 +40,14 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -71,6 +73,262 @@ private const val TAB_SERVICES = "Services"
 private const val TAB_EXPENSES = "Expenses"
 private const val TAB_CUSTOMERS = "Customers"
 private const val TAB_ABOUT = "About"
+
+/*───────────────────────── localization ─────────────────────────*/
+
+private class Strings(
+    val english: Boolean,
+    val tagline: String,
+    val toggleTheme: String,
+    val changeLanguage: String,
+    val languageButton: String,
+    val tabHome: String,
+    val tabServices: String,
+    val tabExpenses: String,
+    val tabCustomers: String,
+    val tabAbout: String,
+    val add: String,
+    val revenueReport: String,
+    val today: String,
+    val thisWeek: String,
+    val thisMonth: String,
+    val thisYear: String,
+    val todayExpenses: String,
+    val registerService: String,
+    val registerExpense: String,
+    val recentActivity: String,
+    val emptyHome: String,
+    val netIncome: String,
+    val todayWithDate: String,
+    val itemSingular: String,
+    val itemPlural: String,
+    val totalSuffix: String,
+    val emptyItems: String,
+    val serviceList: String,
+    val serviceListSubtitle: String,
+    val newService: String,
+    val emptyServices: String,
+    val relatedRecords: String,
+    val edit: String,
+    val delete: String,
+    val amountToman: String,
+    val amountInvalid: String,
+    val jalaliDate: String,
+    val dateInvalid: String,
+    val linkService: String,
+    val registerCustomer: String,
+    val customerName: String,
+    val expenseTitle: String,
+    val serviceName: String,
+    val phoneOptional: String,
+    val noteOptional: String,
+    val customerNameOptional: String,
+    val save: String,
+    val cancel: String,
+    val editCustomer: String,
+    val editExpense: String,
+    val editService: String,
+    val addNewService: String,
+    val priceToman: String,
+    val descriptionOptional: String,
+    val labelService: String,
+    val labelServiceRecord: String,
+    val labelExpense: String,
+    val labelCustomer: String,
+    val labelItem: String,
+    val deleteCatalogMessage: String,
+    val deleteMessage: String,
+    val deleteTitle: String,
+    val backupSaved: String,
+    val backupFailed: String,
+    val saveFailed: String,
+    val salonLogo: String,
+    val salonManagement: String,
+    val appName: String,
+    val aboutTitle: String,
+    val aboutText: String,
+    val dataBackupTitle: String,
+    val dataBackupText: String,
+    val exportCsv: String,
+    val developerTitle: String,
+    val developerText: String,
+    val versionLabel: String
+) {
+    fun fmt(template: String, vararg args: Any): String =
+        String.format(Locale.US, template, *args)
+}
+
+private val PersianStrings = Strings(
+    english = false,
+    tagline = "مدیریت مالی سالن",
+    toggleTheme = "تغییر حالت روشن/تاریک",
+    changeLanguage = "تغییر زبان",
+    languageButton = "English",
+    tabHome = "خانه",
+    tabServices = "خدمات",
+    tabExpenses = "هزینه‌ها",
+    tabCustomers = "مشتریان",
+    tabAbout = "درباره",
+    add = "افزودن",
+    revenueReport = "گزارش درآمد",
+    today = "امروز",
+    thisWeek = "این هفته",
+    thisMonth = "این ماه",
+    thisYear = "امسال",
+    todayExpenses = "هزینه‌های امروز",
+    registerService = "ثبت خدمت",
+    registerExpense = "ثبت هزینه",
+    recentActivity = "فعالیت‌های اخیر",
+    emptyHome = "هنوز اطلاعاتی ثبت نشده است؛ اولین خدمت را اضافه کنید.",
+    netIncome = "درآمد خالص ثبت‌شده",
+    todayWithDate = "امروز: %s",
+    itemSingular = "%s مورد",
+    itemPlural = "%s مورد",
+    totalSuffix = "%s · مجموع %s",
+    emptyItems = "موردی یافت نشد. برای افزودن، روی + بزنید.",
+    serviceList = "فهرست خدمات",
+    serviceListSubtitle = "نام و قیمت خدمات سالن",
+    newService = "خدمت جدید",
+    emptyServices = "هنوز خدمتی تعریف نشده است. برای افزودن، «خدمت جدید» را بزنید.",
+    relatedRecords = "رکوردهای مرتبط: %s · درآمد: %s",
+    edit = "ویرایش",
+    delete = "حذف",
+    amountToman = "مبلغ (تومان)",
+    amountInvalid = "مبلغ باید بزرگ‌تر از صفر باشد",
+    jalaliDate = "تاریخ شمسی",
+    dateInvalid = "تاریخ کامل و درست وارد کنید",
+    linkService = "اتصال به خدمت (اختیاری)",
+    registerCustomer = "ثبت مشتری",
+    customerName = "نام مشتری",
+    expenseTitle = "عنوان هزینه",
+    serviceName = "نام خدمت",
+    phoneOptional = "تلفن (اختیاری)",
+    noteOptional = "یادداشت (اختیاری)",
+    customerNameOptional = "نام مشتری (اختیاری)",
+    save = "ذخیره",
+    cancel = "انصراف",
+    editCustomer = "ویرایش مشتری",
+    editExpense = "ویرایش هزینه",
+    editService = "ویرایش خدمت",
+    addNewService = "افزودن خدمت جدید",
+    priceToman = "قیمت (تومان)",
+    descriptionOptional = "توضیحات (اختیاری)",
+    labelService = "خدمت",
+    labelServiceRecord = "رکورد خدمت",
+    labelExpense = "هزینه",
+    labelCustomer = "مشتری",
+    labelItem = "مورد",
+    deleteCatalogMessage = "با حذف «%s» ارتباط رکوردهای مالی با این خدمت قطع می‌شود؛ خود رکوردها حذف نمی‌شوند.",
+    deleteMessage = "آیا از حذف «%s» مطمئن هستید؟ این عمل قابل بازگشت نیست.",
+    deleteTitle = "حذف %s؟",
+    backupSaved = "فایل پشتیبان ذخیره شد",
+    backupFailed = "ذخیره فایل ناموفق بود",
+    saveFailed = "ذخیره اطلاعات ناموفق بود",
+    salonLogo = "لوگوی سالن",
+    salonManagement = "مدیریت سالن",
+    appName = "مدیر سالن آلوَند",
+    aboutTitle = "درباره",
+    aboutText = "این برنامه برای ثبت خدمات، درآمد، هزینه‌ها و مشتریان یک سالن طراحی شده است. اطلاعات به‌صورت محلی ذخیره می‌شود و به اینترنت نیاز ندارد.",
+    dataBackupTitle = "اطلاعات و پشتیبان‌گیری",
+    dataBackupText = "می‌توانید از این صفحه فایل CSV داده‌های خود را خارج کنید. پیش از حذف برنامه یا تعویض گوشی، از این فایل پشتیبان بگیرید.",
+    exportCsv = "خروجی پشتیبان CSV",
+    developerTitle = "توسعه‌دهنده",
+    developerText = "این برنامه توسط توسعه‌دهنده پروژه آلوَند و با کمک ابزارهای هوش مصنوعی ساخته شده است.",
+    versionLabel = "نسخه %s (کد %s)"
+)
+
+private val EnglishStrings = Strings(
+    english = true,
+    tagline = "Salon Financial Management",
+    toggleTheme = "Toggle theme",
+    changeLanguage = "Change language",
+    languageButton = "فارسی",
+    tabHome = "Home",
+    tabServices = "Services",
+    tabExpenses = "Expenses",
+    tabCustomers = "Customers",
+    tabAbout = "About",
+    add = "Add",
+    revenueReport = "Revenue Report",
+    today = "Today",
+    thisWeek = "This Week",
+    thisMonth = "This Month",
+    thisYear = "This Year",
+    todayExpenses = "Today's Expenses",
+    registerService = "Register Service",
+    registerExpense = "Register Expense",
+    recentActivity = "Recent Activity",
+    emptyHome = "No information registered yet; add the first service.",
+    netIncome = "Net Income Registered",
+    todayWithDate = "Today: %s",
+    itemSingular = "%s item",
+    itemPlural = "%s items",
+    totalSuffix = "%s · Total %s",
+    emptyItems = "No items found. Tap + to add a new item.",
+    serviceList = "Service List",
+    serviceListSubtitle = "Service names and prices for the salon",
+    newService = "New Service",
+    emptyServices = "No services defined yet. Tap 'New Service' to add one.",
+    relatedRecords = "Related records: %s · Income: %s",
+    edit = "Edit",
+    delete = "Delete",
+    amountToman = "Amount (Toman)",
+    amountInvalid = "Amount must be greater than zero",
+    jalaliDate = "Jalali Date",
+    dateInvalid = "Enter a complete and correct date",
+    linkService = "Link to service (optional)",
+    registerCustomer = "Register Customer",
+    customerName = "Customer Name",
+    expenseTitle = "Expense Title",
+    serviceName = "Service Name",
+    phoneOptional = "Phone (optional)",
+    noteOptional = "Note (optional)",
+    customerNameOptional = "Customer Name (optional)",
+    save = "Save",
+    cancel = "Cancel",
+    editCustomer = "Edit Customer",
+    editExpense = "Edit Expense",
+    editService = "Edit Service",
+    addNewService = "Add New Service",
+    priceToman = "Price (Toman)",
+    descriptionOptional = "Description (optional)",
+    labelService = "Service",
+    labelServiceRecord = "Service Record",
+    labelExpense = "Expense",
+    labelCustomer = "Customer",
+    labelItem = "Item",
+    deleteCatalogMessage = "Deleting \"%s\" will unlink financial records from this service; the records themselves will not be deleted.",
+    deleteMessage = "Are you sure you want to delete \"%s\"? This cannot be undone.",
+    deleteTitle = "Delete %s?",
+    backupSaved = "Backup file saved",
+    backupFailed = "Failed to save file",
+    saveFailed = "Save failed",
+    salonLogo = "Salon Logo",
+    salonManagement = "Salon Management",
+    appName = "Alvand Salon Manager",
+    aboutTitle = "About",
+    aboutText = "This app is designed to register services, income, expenses, and customers for a salon. Information is stored locally and does not require internet.",
+    dataBackupTitle = "Data and Backup",
+    dataBackupText = "You can export a CSV file of your data from this page. Before deleting the app or switching phones, back up this file.",
+    exportCsv = "Export CSV Backup",
+    developerTitle = "Developer",
+    developerText = "This app was developed by the Alvand project developer with the help of AI tools.",
+    versionLabel = "Version %s (Code %s)"
+)
+
+private val LocalStrings = staticCompositionLocalOf { PersianStrings }
+
+private const val PREFS_NAME = "alvand_salon_prefs"
+private const val KEY_ENGLISH = "english_ui"
+
+private fun loadEnglish(context: Context): Boolean =
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getBoolean(KEY_ENGLISH, false)
+
+private fun saveEnglish(context: Context, english: Boolean) {
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit().putBoolean(KEY_ENGLISH, english).apply()
+}
 
 private val BrandGold = Color(0xFFE6AD45)
 private val OnBrandGold = Color(0xFF2B1D00)
@@ -368,20 +626,27 @@ private fun normalizeDate(raw: String): String {
     return "%04d-%02d-%02d".format(Locale.US, year, month, day)
 }
 
-private fun money(value: Long): String {
+private fun numberText(value: Long, english: Boolean): String =
+    if (english) value.toString() else persianDigits(value.toString())
+
+private fun money(value: Long, english: Boolean = false): String {
     val negative = value < 0
     val digits = value.toString().removePrefix("-")
-    val grouped = digits.reversed().chunked(3).joinToString("\u066B").reversed()
     val prefix = if (negative) "-" else ""
-    return prefix + persianDigits(grouped) + " \u062A\u0648\u0645\u0627\u0646"
+    return if (english) {
+        prefix + digits.reversed().chunked(3).joinToString(",").reversed() + " Toman"
+    } else {
+        val grouped = digits.reversed().chunked(3).joinToString("\u066C").reversed()
+        prefix + persianDigits(grouped) + " \u062A\u0648\u0645\u0627\u0646"
+    }
 }
 
-private fun showJalali(date: String): String {
+private fun showJalali(date: String, english: Boolean = false): String {
     val normalized = normalizeDate(date)
     val match = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$").matchEntire(normalized) ?: return normalized
-    return "${persianDigits(match.groupValues[1])}-" +
-        "${persianDigits(match.groupValues[2])}-" +
-        persianDigits(match.groupValues[3])
+    val (year, month, day) = match.destructured
+    return if (english) "$year-$month-$day"
+    else "${persianDigits(year)}-${persianDigits(month)}-${persianDigits(day)}"
 }
 
 private fun jalaliToday(): String {
@@ -483,7 +748,10 @@ private fun parseAmount(raw: String): Long? {
 
 @Composable
 fun SalonApp(store: SalonStore) {
+    val context = LocalContext.current
     var dark by rememberSaveable { mutableStateOf(true) }
+    var english by rememberSaveable { mutableStateOf(loadEnglish(context)) }
+    val strings = if (english) EnglishStrings else PersianStrings
     var tab by rememberSaveable { mutableStateOf(TAB_HOME) }
     var refresh by remember { mutableIntStateOf(0) }
     var records by remember { mutableStateOf(store.all()) }
@@ -496,14 +764,13 @@ fun SalonApp(store: SalonStore) {
     var deleteTarget by remember { mutableStateOf<DeleteTarget?>(null) }
 
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     fun mutate(block: () -> Unit) {
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { block() }
             } catch (_: Exception) {
-                Toast.makeText(context, "Save failed", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, strings.saveFailed, Toast.LENGTH_LONG).show()
             } finally {
                 refresh++
             }
@@ -571,17 +838,20 @@ fun SalonApp(store: SalonStore) {
     }
 
     MaterialTheme(colorScheme = scheme) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        CompositionLocalProvider(
+            LocalLayoutDirection provides if (english) LayoutDirection.Ltr else LayoutDirection.Rtl,
+            LocalStrings provides strings
+        ) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         listOf(
-                            Triple(TAB_HOME, "Home", Icons.Default.Dashboard),
-                            Triple(TAB_SERVICES, "Services", Icons.Default.ContentCut),
-                            Triple(TAB_EXPENSES, "Expenses", Icons.Default.ReceiptLong),
-                            Triple(TAB_CUSTOMERS, "Customers", Icons.Default.People),
-                            Triple(TAB_ABOUT, "About", Icons.Default.Info)
+                            Triple(TAB_HOME, strings.tabHome, Icons.Default.Dashboard),
+                            Triple(TAB_SERVICES, strings.tabServices, Icons.Default.ContentCut),
+                            Triple(TAB_EXPENSES, strings.tabExpenses, Icons.Default.ReceiptLong),
+                            Triple(TAB_CUSTOMERS, strings.tabCustomers, Icons.Default.People),
+                            Triple(TAB_ABOUT, strings.tabAbout, Icons.Default.Info)
                         ).forEach { (tabName, label, icon) ->
                             NavigationBarItem(
                                 selected = tab == tabName,
@@ -602,7 +872,7 @@ fun SalonApp(store: SalonStore) {
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add")
+                            Icon(Icons.Default.Add, contentDescription = strings.add)
                         }
                     }
                 }
@@ -613,7 +883,14 @@ fun SalonApp(store: SalonStore) {
                         .padding(padding)
                         .padding(horizontal = 18.dp)
                 ) {
-                    Header(dark = dark, onToggleTheme = { dark = !dark })
+                    Header(
+                        dark = dark,
+                        onToggleTheme = { dark = !dark },
+                        onToggleLanguage = {
+                            english = !english
+                            saveEnglish(context, english)
+                        }
+                    )
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         when (tab) {
                             TAB_HOME -> HomeScreen(
@@ -647,7 +924,7 @@ fun SalonApp(store: SalonStore) {
                                 }
                             )
                             TAB_EXPENSES -> RecordsList(
-                                title = "Expenses",
+                                title = strings.tabExpenses,
                                 records = records.filter { it.kind == "expense" },
                                 showTotal = true,
                                 onDelete = { record ->
@@ -656,7 +933,7 @@ fun SalonApp(store: SalonStore) {
                                 onEdit = { editingRecord = it }
                             )
                             TAB_CUSTOMERS -> RecordsList(
-                                title = "Customers",
+                                title = strings.tabCustomers,
                                 records = records.filter { it.kind == "customer" },
                                 showTotal = false,
                                 onDelete = { record ->
@@ -747,7 +1024,8 @@ fun SalonApp(store: SalonStore) {
 /*───────────────────────── shared UI ─────────────────────────*/
 
 @Composable
-private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
+private fun Header(dark: Boolean, onToggleTheme: () -> Unit, onToggleLanguage: () -> Unit) {
+    val strings = LocalStrings.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -762,15 +1040,41 @@ private fun Header(dark: Boolean, onToggleTheme: () -> Unit) {
                 color = MaterialTheme.colorScheme.primary
             )
             Text(
-                "Salon Financial Management",
+                strings.tagline,
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onToggleLanguage)
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Translate,
+                    contentDescription = strings.changeLanguage,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    strings.languageButton,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
         IconButton(onClick = onToggleTheme) {
             Icon(
                 if (dark) Icons.Default.LightMode else Icons.Default.DarkMode,
-                contentDescription = "Toggle theme"
+                contentDescription = strings.toggleTheme
             )
         }
     }
@@ -784,6 +1088,7 @@ private fun HomeScreen(
     onDelete: (Record) -> Unit,
     onEdit: (Record) -> Unit
 ) {
+    val strings = LocalStrings.current
     val today = jalaliToday()
     val income = records.filter { it.kind == "service" }
     val expenses = records.filter { it.kind == "expense" }
@@ -805,17 +1110,17 @@ private fun HomeScreen(
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
         item { HeroCard(net = net, today = today) }
-        item { Text("Revenue Report", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        item { Text(strings.revenueReport, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Today", daily, Modifier.weight(1f), BrandGold)
-                StatCard("This Week", week, Modifier.weight(1f), Mint)
+                StatCard(strings.today, daily, Modifier.weight(1f), BrandGold)
+                StatCard(strings.thisWeek, week, Modifier.weight(1f), Mint)
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("This Month", month, Modifier.weight(1f), Color(0xFFE59B38))
-                StatCard("This Year", year, Modifier.weight(1f), Color(0xFFDB6D9A))
+                StatCard(strings.thisMonth, month, Modifier.weight(1f), Color(0xFFE59B38))
+                StatCard(strings.thisYear, year, Modifier.weight(1f), Color(0xFFDB6D9A))
             }
         }
         item {
@@ -833,10 +1138,14 @@ private fun HomeScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Today's Expenses",
+                            strings.todayExpenses,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(money(dailyCost), fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            money(dailyCost, strings.english),
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                     Icon(
                         Icons.Default.Payments,
@@ -856,7 +1165,7 @@ private fun HomeScreen(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Register Service")
+                    Text(strings.registerService)
                 }
                 OutlinedButton(
                     onClick = onAddExpense,
@@ -865,14 +1174,14 @@ private fun HomeScreen(
                 ) {
                     Icon(Icons.Default.ReceiptLong, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text("Register Expense")
+                    Text(strings.registerExpense)
                 }
             }
         }
-        item { Text("Recent Activity", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        item { Text(strings.recentActivity, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         if (records.isEmpty()) {
             item {
-                EmptyState("No information registered yet; add the first service.")
+                EmptyState(strings.emptyHome)
             }
         } else {
             items(records.take(5), key = { it.id }) { record ->
@@ -888,6 +1197,7 @@ private fun HomeScreen(
 
 @Composable
 private fun HeroCard(net: Long, today: String) {
+    val strings = LocalStrings.current
     Card(
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(
@@ -898,13 +1208,13 @@ private fun HeroCard(net: Long, today: String) {
     ) {
         Column(Modifier.padding(22.dp)) {
             Text(
-                "Net Income Registered",
+                strings.netIncome,
                 color = OnBrandGold.copy(alpha = 0.78f),
                 fontSize = 14.sp
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                money(net),
+                money(net, strings.english),
                 color = OnBrandGold,
                 fontSize = 27.sp,
                 fontWeight = FontWeight.Bold
@@ -917,7 +1227,7 @@ private fun HeroCard(net: Long, today: String) {
                     shape = CircleShape
                 ) {
                     Text(
-                        "  Today: ${showJalali(today)}  ",
+                        "  " + strings.fmt(strings.todayWithDate, showJalali(today, strings.english)) + "  ",
                         modifier = Modifier.padding(7.dp),
                         fontSize = 12.sp
                     )
@@ -936,6 +1246,7 @@ private fun HeroCard(net: Long, today: String) {
 
 @Composable
 private fun StatCard(label: String, amount: Long, modifier: Modifier, accent: Color) {
+    val strings = LocalStrings.current
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
@@ -955,7 +1266,7 @@ private fun StatCard(label: String, amount: Long, modifier: Modifier, accent: Co
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                money(amount),
+                money(amount, strings.english),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -973,7 +1284,12 @@ private fun RecordsList(
     onDelete: (Record) -> Unit,
     onEdit: (Record) -> Unit
 ) {
+    val strings = LocalStrings.current
     Column(Modifier.fillMaxSize()) {
+        val countText = strings.fmt(
+            if (records.size == 1) strings.itemSingular else strings.itemPlural,
+            numberText(records.size.toLong(), strings.english)
+        )
         Column(
             Modifier
                 .fillMaxWidth()
@@ -982,16 +1298,20 @@ private fun RecordsList(
             Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold)
             Text(
                 if (showTotal) {
-                    "${records.size} items · Total ${money(records.sumOf { it.amount })}"
+                    strings.fmt(
+                        strings.totalSuffix,
+                        countText,
+                        money(records.sumOf { it.amount }, strings.english)
+                    )
                 } else {
-                    "${records.size} items"
+                    countText
                 },
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         if (records.isEmpty()) {
-            EmptyState("No items found. Tap + to add a new item.")
+            EmptyState(strings.emptyItems)
         } else {
             LazyColumn(
                 Modifier.weight(1f),
@@ -1012,6 +1332,7 @@ private fun RecordsList(
 
 @Composable
 private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit) {
+    val strings = LocalStrings.current
     val isExpense = record.kind == "expense"
     val isCustomer = record.kind == "customer"
     val icon: androidx.compose.ui.graphics.vector.ImageVector
@@ -1079,14 +1400,14 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
                     )
                 }
                 Text(
-                    showJalali(record.date),
+                    showJalali(record.date, strings.english),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (!isCustomer) {
                 Text(
-                    money(record.amount),
+                    money(record.amount, strings.english),
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = if (isExpense) {
@@ -1101,14 +1422,14 @@ private fun RecordCard(record: Record, onEdit: () -> Unit, onDelete: () -> Unit)
             IconButton(onClick = onEdit) {
                 Icon(
                     Icons.Default.Edit,
-                    contentDescription = "Edit",
+                    contentDescription = strings.edit,
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.DeleteOutline,
-                    contentDescription = "Delete",
+                    contentDescription = strings.delete,
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -1158,6 +1479,7 @@ private fun ServiceCatalog(
     onEdit: (SalonService) -> Unit,
     onDelete: (SalonService) -> Unit
 ) {
+    val strings = LocalStrings.current
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -1166,9 +1488,9 @@ private fun ServiceCatalog(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Service List", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(strings.serviceList, fontSize = 21.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Service names and prices for the salon",
+                    strings.serviceListSubtitle,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1176,11 +1498,11 @@ private fun ServiceCatalog(
             Button(onClick = onAdd, shape = RoundedCornerShape(14.dp)) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
-                Text("New Service")
+                Text(strings.newService)
             }
         }
         if (services.isEmpty()) {
-            EmptyState("No services defined yet. Tap 'New Service' to add one.")
+            EmptyState(strings.emptyServices)
         } else {
             LazyColumn(
                 Modifier.weight(1f),
@@ -1233,13 +1555,17 @@ private fun ServiceCatalog(
                                     )
                                 }
                                 Text(
-                                    money(service.price),
+                                    money(service.price, strings.english),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                                 if (related.isNotEmpty()) {
                                     Text(
-                                        "Related records: ${related.size} · Income: ${money(relatedIncome)}",
+                                        strings.fmt(
+                                            strings.relatedRecords,
+                                            numberText(related.size.toLong(), strings.english),
+                                            money(relatedIncome, strings.english)
+                                        ),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1248,14 +1574,14 @@ private fun ServiceCatalog(
                             IconButton(onClick = { onEdit(service) }) {
                                 Icon(
                                     Icons.Default.Edit,
-                                    contentDescription = "Edit",
+                                    contentDescription = strings.edit,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(onClick = { onDelete(service) }) {
                                 Icon(
                                     Icons.Default.DeleteOutline,
-                                    contentDescription = "Delete",
+                                    contentDescription = strings.delete,
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -1273,8 +1599,9 @@ private fun ServiceCatalog(
 private fun AmountField(
     value: String,
     onValueChange: (String) -> Unit,
-    label: String = "Amount (Toman)"
+    label: String? = null
 ) {
+    val strings = LocalStrings.current
     val parsed = parseAmount(value)
     val invalid = value.isNotBlank() && (parsed == null || parsed <= 0)
     OutlinedTextField(
@@ -1286,12 +1613,12 @@ private fun AmountField(
                 }.take(15)
             )
         },
-        label = { Text(label) },
+        label = { Text(label ?: strings.amountToman) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
         isError = invalid,
         supportingText = if (invalid) {
-            { Text("Amount must be greater than zero") }
+            { Text(strings.amountInvalid) }
         } else {
             null
         }
@@ -1300,24 +1627,27 @@ private fun AmountField(
 
 @Composable
 private fun DateField(value: String, onValueChange: (String) -> Unit) {
+    val strings = LocalStrings.current
     val invalid = value.isNotBlank() && !isValidJalaliDate(value)
     Column {
         OutlinedTextField(
-            value = persianDigits(value),
+            value = if (strings.english) value else persianDigits(value),
             onValueChange = { input -> onValueChange(formatDateInput(input)) },
-            label = { Text("Jalali Date") },
-            placeholder = { Text("1405-08-22") },
+            label = { Text(strings.jalaliDate) },
+            placeholder = {
+                Text(if (strings.english) "1405-08-22" else persianDigits("1405-08-22"))
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             isError = invalid,
             supportingText = if (invalid) {
-                { Text("Enter a complete and correct date") }
+                { Text(strings.dateInvalid) }
             } else {
                 null
             }
         )
         TextButton(onClick = { onValueChange(jalaliToday()) }) {
-            Text("Today")
+            Text(strings.today)
         }
     }
 }
@@ -1329,8 +1659,9 @@ private fun ServiceChips(
     onSelect: (SalonService) -> Unit
 ) {
     if (services.isEmpty()) return
+    val strings = LocalStrings.current
     Text(
-        "Link to service (optional)",
+        strings.linkService,
         fontSize = 12.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -1359,6 +1690,7 @@ private fun AddDialog(
     onDismiss: () -> Unit,
     onSave: (String, Long, String, String, String, Long?) -> Unit
 ) {
+    val strings = LocalStrings.current
     var title by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(jalaliToday()) }
@@ -1371,9 +1703,9 @@ private fun AddDialog(
     val validAmount = !customerOnly && parsedAmount != null && parsedAmount > 0
     val canSave = title.isNotBlank() && isValidJalaliDate(date) && (customerOnly || validAmount)
     val heading = when {
-        customerOnly -> "Register Customer"
-        expense -> "Register Expense"
-        else -> "Register Service"
+        customerOnly -> strings.registerCustomer
+        expense -> strings.registerExpense
+        else -> strings.registerService
     }
 
     AlertDialog(
@@ -1390,11 +1722,11 @@ private fun AddDialog(
                     label = {
                         Text(
                             if (customerOnly) {
-                                "Customer Name"
+                                strings.customerName
                             } else if (expense) {
-                                "Expense Title"
+                                strings.expenseTitle
                             } else {
-                                "Service Name"
+                                strings.serviceName
                             }
                         )
                     },
@@ -1412,7 +1744,7 @@ private fun AddDialog(
                                 it.isDigit() || it == '+' || it == '-' || it == ' '
                             }.take(20)
                         },
-                        label = { Text("Phone (optional)") },
+                        label = { Text(strings.phoneOptional) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         singleLine = true
                     )
@@ -1420,7 +1752,10 @@ private fun AddDialog(
                         value = customer,
                         onValueChange = { customer = it },
                         label = {
-                            Text(if (customerOnly) "Note (optional)" else "Customer Name (optional)")
+                            Text(
+                                if (customerOnly) strings.noteOptional
+                                else strings.customerNameOptional
+                            )
                         },
                         singleLine = !customerOnly,
                         minLines = if (customerOnly) 2 else 1
@@ -1457,11 +1792,11 @@ private fun AddDialog(
                 },
                 enabled = canSave
             ) {
-                Text("Save")
+                Text(strings.save)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
         }
     )
 }
@@ -1475,6 +1810,7 @@ private fun RecordEditorDialog(
     onDismiss: () -> Unit,
     onSave: (String, Long, String, String, String, Long?) -> Unit
 ) {
+    val strings = LocalStrings.current
     var title by remember(record.id) { mutableStateOf(record.title) }
     var amount by remember(record.id) { mutableStateOf(record.amount.toString()) }
     var date by remember(record.id) { mutableStateOf(normalizeDate(record.date)) }
@@ -1487,9 +1823,9 @@ private fun RecordEditorDialog(
     val validAmount = !customerOnly && parsedAmount != null && parsedAmount > 0
     val canSave = title.isNotBlank() && isValidJalaliDate(date) && (customerOnly || validAmount)
     val heading = when {
-        customerOnly -> "Edit Customer"
-        expense -> "Edit Expense"
-        else -> "Edit Service"
+        customerOnly -> strings.editCustomer
+        expense -> strings.editExpense
+        else -> strings.editService
     }
 
     AlertDialog(
@@ -1506,11 +1842,11 @@ private fun RecordEditorDialog(
                     label = {
                         Text(
                             if (customerOnly) {
-                                "Customer Name"
+                                strings.customerName
                             } else if (expense) {
-                                "Expense Title"
+                                strings.expenseTitle
                             } else {
-                                "Service Name"
+                                strings.serviceName
                             }
                         )
                     },
@@ -1528,7 +1864,7 @@ private fun RecordEditorDialog(
                                 it.isDigit() || it == '+' || it == '-' || it == ' '
                             }.take(20)
                         },
-                        label = { Text("Phone (optional)") },
+                        label = { Text(strings.phoneOptional) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         singleLine = true
                     )
@@ -1536,7 +1872,10 @@ private fun RecordEditorDialog(
                         value = customer,
                         onValueChange = { customer = it },
                         label = {
-                            Text(if (customerOnly) "Note (optional)" else "Customer Name (optional)")
+                            Text(
+                                if (customerOnly) strings.noteOptional
+                                else strings.customerNameOptional
+                            )
                         },
                         singleLine = !customerOnly,
                         minLines = if (customerOnly) 2 else 1
@@ -1568,11 +1907,11 @@ private fun RecordEditorDialog(
                 },
                 enabled = canSave
             ) {
-                Text("Save")
+                Text(strings.save)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
         }
     )
 }
@@ -1585,6 +1924,7 @@ private fun ServiceEditorDialog(
     onDismiss: () -> Unit,
     onSave: (Long?, String, Long, String) -> Unit
 ) {
+    val strings = LocalStrings.current
     var name by remember(service?.id) { mutableStateOf(service?.name ?: "") }
     var price by remember(service?.id) { mutableStateOf(service?.price?.toString() ?: "") }
     var description by remember(service?.id) {
@@ -1597,7 +1937,7 @@ private fun ServiceEditorDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (service == null) "Add New Service" else "Edit Service",
+                if (service == null) strings.addNewService else strings.editService,
                 fontWeight = FontWeight.Bold
             )
         },
@@ -1609,18 +1949,18 @@ private fun ServiceEditorDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Service Name") },
+                    label = { Text(strings.serviceName) },
                     singleLine = true
                 )
                 AmountField(
                     value = price,
                     onValueChange = { price = it },
-                    label = "Price (Toman)"
+                    label = strings.priceToman
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description (optional)") },
+                    label = { Text(strings.descriptionOptional) },
                     minLines = 2
                 )
             }
@@ -1632,11 +1972,11 @@ private fun ServiceEditorDialog(
                 },
                 enabled = canSave
             ) {
-                Text("Save")
+                Text(strings.save)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
         }
     )
 }
@@ -1649,21 +1989,22 @@ private fun ConfirmDeleteDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val strings = LocalStrings.current
     val label = when (target.kind) {
-        "catalog" -> "Service"
-        "service" -> "Service Record"
-        "expense" -> "Expense"
-        "customer" -> "Customer"
-        else -> "Item"
+        "catalog" -> strings.labelService
+        "service" -> strings.labelServiceRecord
+        "expense" -> strings.labelExpense
+        "customer" -> strings.labelCustomer
+        else -> strings.labelItem
     }
     val message = if (target.kind == "catalog") {
-        "Deleting \"${target.title}\" will unlink financial records from this service; the records themselves will not be deleted."
+        strings.fmt(strings.deleteCatalogMessage, target.title)
     } else {
-        "Are you sure you want to delete \"${target.title}\"? This cannot be undone."
+        strings.fmt(strings.deleteMessage, target.title)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Delete $label?", fontWeight = FontWeight.Bold) },
+        title = { Text(strings.fmt(strings.deleteTitle, label), fontWeight = FontWeight.Bold) },
         text = { Text(message) },
         confirmButton = {
             Button(
@@ -1673,11 +2014,11 @@ private fun ConfirmDeleteDialog(
                     contentColor = MaterialTheme.colorScheme.onError
                 )
             ) {
-                Text("Delete")
+                Text(strings.delete)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
         }
     )
 }
@@ -1686,6 +2027,7 @@ private fun ConfirmDeleteDialog(
 
 @Composable
 private fun AboutScreen(store: SalonStore) {
+    val strings = LocalStrings.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(
@@ -1705,7 +2047,7 @@ private fun AboutScreen(store: SalonStore) {
                 }
                 Toast.makeText(
                     context,
-                    if (ok) "Backup file saved" else "Failed to save file",
+                    if (ok) strings.backupSaved else strings.backupFailed,
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -1721,25 +2063,19 @@ private fun AboutScreen(store: SalonStore) {
     ) {
         androidx.compose.foundation.Image(
             painter = painterResource(id = R.drawable.alvand_salon_logo),
-            contentDescription = "Salon Logo",
+            contentDescription = strings.salonLogo,
             modifier = Modifier.size(104.dp)
         )
         Spacer(Modifier.height(14.dp))
-        Text("Salon Management", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text("Alvand Salon Manager", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(strings.salonManagement, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(strings.appName, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(18.dp))
-        AboutCard(title = "About") {
-            Text(
-                "This app is designed to register services, income, expenses, and customers for a salon. " +
-                    "Information is stored locally and does not require internet."
-            )
+        AboutCard(title = strings.aboutTitle) {
+            Text(strings.aboutText)
         }
         Spacer(Modifier.height(12.dp))
-        AboutCard(title = "Data and Backup") {
-            Text(
-                "You can export a CSV file of your data from this page. " +
-                    "Before deleting the app or switching phones, back up this file."
-            )
+        AboutCard(title = strings.dataBackupTitle) {
+            Text(strings.dataBackupText)
             Spacer(Modifier.height(10.dp))
             Button(
                 onClick = {
@@ -1749,14 +2085,12 @@ private fun AboutScreen(store: SalonStore) {
             ) {
                 Icon(Icons.Default.FileDownload, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Export CSV Backup")
+                Text(strings.exportCsv)
             }
         }
         Spacer(Modifier.height(12.dp))
-        AboutCard(title = "Developer") {
-            Text(
-                "This app was developed by the Alvand project developer with the help of AI tools."
-            )
+        AboutCard(title = strings.developerTitle) {
+            Text(strings.developerText)
             Spacer(Modifier.height(10.dp))
             Text(
                 "https://github.com/Alvandcode/",
@@ -1775,7 +2109,11 @@ private fun AboutScreen(store: SalonStore) {
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            "Version ${BuildConfig.VERSION_NAME} (Code ${BuildConfig.VERSION_CODE})",
+            strings.fmt(
+                strings.versionLabel,
+                BuildConfig.VERSION_NAME,
+                BuildConfig.VERSION_CODE.toString()
+            ),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
